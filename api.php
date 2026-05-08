@@ -56,15 +56,26 @@ if ($action === 'upload_chunk') {
     if(!move_uploaded_file($_FILES['chunk']['tmp_name'],$chunkPath)){http_response_code(500);echo json_encode(['error'=>'Save failed']);exit;}
     $arrived=glob($tmpDir.DIRECTORY_SEPARATOR.'chunk_*');
     if(count($arrived)<$totalChunks){echo json_encode(['success'=>true,'done'=>false,'received'=>count($arrived)]);exit;}
+    
+    $lockFile = $tmpDir . DIRECTORY_SEPARATOR . 'merge.lock';
+    $lock = fopen($lockFile, 'w');
+    if (!flock($lock, LOCK_EX | LOCK_NB)) {
+        fclose($lock);
+        echo json_encode(['success'=>true, 'done'=>false, 'received'=>count($arrived)]);
+        exit;
+    }
+
     $finalName=$fileName; $targetPath=$videoDir.DIRECTORY_SEPARATOR.$finalName;
     if(file_exists($targetPath)){
         if($keepBoth){$base=pathinfo($fileName,PATHINFO_FILENAME);$finalName=$base.'_'.date('Ymd_His').'.'.$ext;$targetPath=$videoDir.DIRECTORY_SEPARATOR.$finalName;}
-        elseif(!$overwrite){http_response_code(409);echo json_encode(['error'=>'conflict']);exit;}
+        elseif(!$overwrite){flock($lock, LOCK_UN); fclose($lock); @unlink($lockFile); http_response_code(409); echo json_encode(['error'=>'conflict']); exit;}
     }
     sort($arrived); $out=fopen($targetPath,'wb');
-    if(!$out){http_response_code(500);echo json_encode(['error'=>'Cannot write']);exit;}
+    if(!$out){flock($lock, LOCK_UN); fclose($lock); @unlink($lockFile); http_response_code(500); echo json_encode(['error'=>'Cannot write']); exit;}
     foreach($arrived as $chunk){$in=fopen($chunk,'rb');while(!feof($in))fwrite($out,fread($in,2*1024*1024));fclose($in);@unlink($chunk);}
-    fclose($out);@rmdir($tmpDir);
+    fclose($out);
+    flock($lock, LOCK_UN); fclose($lock); @unlink($lockFile);
+    @rmdir($tmpDir);
     echo json_encode(['success'=>true,'done'=>true,'file'=>$finalName]); exit;
 }
 

@@ -75,7 +75,10 @@
         Bắt đầu upload
       </button>
       <button id="uploadClearBtn" class="btn btn-ghost" style="display:none;">Xóa danh sách</button>
-      <button id="uploadStopBtn" class="btn btn-ghost" style="display:none; color:var(--error);">⏹ Dừng tất cả</button>
+      <button id="uploadStopBtn" class="btn btn-danger" style="flex:1;display:none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><rect x="6" y="6" width="12" height="12"/></svg>
+        Dừng tất cả
+      </button>
     </div>
     <div id="uploadSummary" style="margin-top:12px;font-size:13px;color:var(--text-gray);text-align:center;"></div>
   </div>
