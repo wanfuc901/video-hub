@@ -304,47 +304,51 @@ if (document.getElementById('videoGrid')) {
             video.muted = true;
             video.playsInline = true;
             video.setAttribute('webkit-playsinline', 'true');
-            video.style.display = 'none';
+            video.style.position = 'fixed';
+            video.style.opacity = '0';
+            video.style.pointerEvents = 'none';
             document.body.appendChild(video);
 
             const cleanup = () => { if(video.parentNode) video.parentNode.removeChild(video); };
 
-            video.addEventListener('loadedmetadata', () => {
+            video.addEventListener('loadeddata', () => {
                 video.currentTime = Math.min(3, video.duration / 2 || 1);
             });
 
             video.addEventListener('seeked', () => {
-                try {
-                    const canvas = document.createElement('canvas');
-                    const maxDim = 640;
-                    let w = video.videoWidth;
-                    let h = video.videoHeight;
-                    
-                    if (w > h) {
-                        if (w > maxDim) { h = h * (maxDim / w); w = maxDim; }
-                    } else {
-                        if (h > maxDim) { w = w * (maxDim / h); h = maxDim; }
-                    }
-                    
-                    canvas.width = w || 640;
-                    canvas.height = h || 360;
-                    
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-                    
-                    const fd = new FormData();
-                    fd.append('file', v.name);
-                    fd.append('image', dataUrl);
-                    fetch('api.php?action=upload_thumbnail', { method: 'POST', body: fd })
-                        .then(r => r.json()).then(res => {
-                            if(res.success) {
-                                v.thumbnail_exists = true;
-                                renderByTab(); 
-                            }
-                            cleanup();
-                        }).catch(cleanup);
-                } catch(e) { cleanup(); }
+                setTimeout(() => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const maxDim = 640;
+                        let w = video.videoWidth;
+                        let h = video.videoHeight;
+                        
+                        if (w > h) {
+                            if (w > maxDim) { h = h * (maxDim / w); w = maxDim; }
+                        } else {
+                            if (h > maxDim) { w = w * (maxDim / h); h = maxDim; }
+                        }
+                        
+                        canvas.width = w || 640;
+                        canvas.height = h || 360;
+                        
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                        
+                        const fd = new FormData();
+                        fd.append('file', v.name);
+                        fd.append('image', dataUrl);
+                        fetch('api.php?action=upload_thumbnail', { method: 'POST', body: fd })
+                            .then(r => r.json()).then(res => {
+                                if(res.success) {
+                                    v.thumbnail_exists = true;
+                                    renderByTab(); 
+                                }
+                                cleanup();
+                            }).catch(cleanup);
+                    } catch(e) { cleanup(); }
+                }, 100);
             });
             video.addEventListener('error', cleanup);
             video.load();
