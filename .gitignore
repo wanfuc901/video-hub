@@ -1,0 +1,5 @@
+videos/
+thumbnails/
+titles.json
+server.log
+*.log
