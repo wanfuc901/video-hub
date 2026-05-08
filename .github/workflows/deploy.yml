@@ -29,7 +29,7 @@ jobs:
             | sort \
             | xargs -I{} php -l {}
 
-  # ─── CD: Deploy lên Termux qua Cloudflare Tunnel + Service Token ─────
+  # ─── CD: Deploy lên Termux qua bore TCP tunnel ───────────────────────
   deploy:
     name: Deploy to Termux
     needs: lint
@@ -37,34 +37,23 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
-      - name: Install cloudflared
-        run: |
-          curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
-            | sudo tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null
-          echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] \
-            https://pkg.cloudflare.com/cloudflared any main" \
-            | sudo tee /etc/apt/sources.list.d/cloudflared.list
-          sudo apt-get update -qq && sudo apt-get install -y cloudflared
-
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-      - name: Deploy via cloudflared SSH
+      - name: Deploy via SSH (bore tunnel)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
           SSH_USER: ${{ secrets.SSH_USER }}
           APP_PATH: ${{ secrets.APP_PATH }}
-          # cloudflared reads these to authenticate as service token (no browser needed)
-          CF_Access_Client_Id: ${{ secrets.CF_CLIENT_ID }}
-          CF_Access_Client_Secret: ${{ secrets.CF_CLIENT_SECRET }}
         run: |
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
-            -o "ProxyCommand=cloudflared access ssh --hostname ${SSH_HOST}" \
+            -p ${SSH_PORT} \
             ${SSH_USER}@${SSH_HOST} << 'ENDSSH'
           set -e
 
