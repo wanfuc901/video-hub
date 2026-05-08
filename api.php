@@ -3,15 +3,17 @@
 header('Content-Type: application/json');
 
 $config = require 'config.php';
-$videoDir = $config['video_dir'];
-$thumbDir = $config['thumb_dir'];
-$titlesFile = $config['titles_file'];
+$videoDir  = $config['video_dir'];
+$scanDirs  = $config['scan_dirs'] ?? [$videoDir];
+$thumbDir  = $config['thumb_dir'];
+$titlesFile= $config['titles_file'];
 $supportedExts = $config['supported_extensions'];
 
 // Ensure directories exist
 if (!is_dir($videoDir)) @mkdir($videoDir, 0777, true);
 if (!is_dir($thumbDir)) @mkdir($thumbDir, 0777, true);
 if (!file_exists($titlesFile)) @file_put_contents($titlesFile, json_encode([]));
+
 
 $action = $_GET['action'] ?? 'list';
 
@@ -30,35 +32,36 @@ function saveTitles($titles) {
 }
 
 if ($action === 'list') {
-    if (!is_dir($videoDir)) {
-        echo json_encode(['error' => 'Video directory not found.']);
-        exit;
-    }
-
     $titles = getTitles();
     $videos = [];
-    $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($videoDir));
-    foreach ($iterator as $file) {
-        if ($file->isFile()) {
-            $ext = strtolower($file->getExtension());
-            if (in_array($ext, $supportedExts)) {
-                $filename = $file->getFilename();
-                $path = $file->getPathname();
-                $customTitle = $titles[$filename] ?? null;
-                $thumbPath = $thumbDir . DIRECTORY_SEPARATOR . md5($filename) . '.jpg';
-                
-                $videos[] = [
-                    'name' => $filename,
-                    'path' => $path,
-                    'size' => $file->getSize(),
-                    'ext' => $ext,
-                    'title_custom' => $customTitle,
-                    'thumbnail_exists' => file_exists($thumbPath),
-                    'mtime' => $file->getMTime()
-                ];
+    $seen = [];
+    foreach ($scanDirs as $dir) {
+        if (!is_dir($dir)) continue;
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir));
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $ext = strtolower($file->getExtension());
+                if (in_array($ext, $supportedExts)) {
+                    $filename = $file->getFilename();
+                    if (isset($seen[$filename])) continue; // dedup
+                    $seen[$filename] = true;
+                    $path = $file->getPathname();
+                    $customTitle = $titles[$filename] ?? null;
+                    $thumbPath = $thumbDir . DIRECTORY_SEPARATOR . md5($filename) . '.jpg';
+                    
+                    $videos[] = [
+                        'name' => $filename,
+                        'path' => $path,
+                        'size' => $file->getSize(),
+                        'ext' => $ext,
+                        'title_custom' => $customTitle,
+                        'thumbnail_exists' => file_exists($thumbPath),
+                        'mtime' => $file->getMTime()
+                    ];
+                }
             }
         }
-    }
+    } // end scanDirs
 
     usort($videos, function($a, $b) {
         return $b['mtime'] <=> $a['mtime'];
@@ -149,44 +152,6 @@ if ($action === 'upload_chunk') {
     @rmdir($tmpDir);
 
     echo json_encode(['success' => true, 'done' => true, 'file' => $finalName]);
-    exit;
-}
-
-
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        http_response_code(405); exit;
-    }
-    
-    set_time_limit(0);
-    ini_set('memory_limit', '10240M');
-    ini_set('post_max_size', '10240M');
-    ini_set('upload_max_filesize', '10240M');
-
-    if (!isset($_FILES['video']) || $_FILES['video']['error'] !== UPLOAD_ERR_OK) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Upload error: ' . ($_FILES['video']['error'] ?? 'Unknown')]);
-        exit;
-    }
-
-    $file = $_FILES['video'];
-    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    if (!in_array($ext, $supportedExts)) {
-        http_response_code(400); echo json_encode(['error' => 'Unsupported type']); exit;
-    }
-
-    $fileName = basename($file['name']);
-    $targetPath = $videoDir . DIRECTORY_SEPARATOR . $fileName;
-
-    if (file_exists($targetPath)) {
-        $fileName = time() . '_' . $fileName;
-        $targetPath = $videoDir . DIRECTORY_SEPARATOR . $fileName;
-    }
-
-    if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-        echo json_encode(['success' => true, 'file' => $fileName]);
-    } else {
-        http_response_code(500); echo json_encode(['error' => 'Save failed']);
-    }
     exit;
 }
 
@@ -308,5 +273,23 @@ if ($action === 'stream') {
         $cur += 1024 * 16;
     }
     fclose($fm);
+    exit;
+}
+
+if ($action === 'delete_many') {
+    $data = json_decode(file_get_contents('php://input'), true);
+    $files = $data['files'] ?? [];
+    $deleted = 0; $errors = [];
+    foreach ($files as $file) {
+        $file = basename($file);
+        if (!$file) continue;
+        $targetPath = $videoDir . DIRECTORY_SEPARATOR . $file;
+        $thumbPath  = $thumbDir . DIRECTORY_SEPARATOR . md5($file) . '.jpg';
+        if (file_exists($targetPath)) { @unlink($targetPath); @unlink($thumbPath); $deleted++; }
+        else { $errors[] = $file; }
+        $titles = getTitles();
+        if (isset($titles[$file])) { unset($titles[$file]); saveTitles($titles); }
+    }
+    echo json_encode(['success' => true, 'deleted' => $deleted, 'errors' => $errors]);
     exit;
 }
