@@ -47,7 +47,10 @@
   <div class="modal-content" style="max-width:560px;width:95vw;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
       <h2 class="syne-font">Upload Video</h2>
-      <span class="close-btn" id="closeUploadBtn" style="position:static;font-size:24px;cursor:pointer;">&times;</span>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="btn-mini-tool" id="minimizeUploadBtn" title="Chạy nền (Minimize)" style="font-size:20px;cursor:pointer;user-select:none;opacity:0.7;">&minus;</span>
+        <span class="close-btn" id="closeUploadBtn" style="position:static;font-size:24px;cursor:pointer;">&times;</span>
+      </div>
     </div>
     <div id="uploadDropZone" class="drop-zone">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" style="margin-bottom:12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -199,5 +202,8 @@
 </main>
 
 <script src="assets/app.js?v=<?= time() ?>"></script>
+</body>
+</html>
+="assets/app.js?v=<?= time() ?>"></script>
 </body>
 </html>

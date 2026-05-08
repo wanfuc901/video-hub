@@ -89,6 +89,8 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
 
   let queue = [];
   let running = 0;
+  let isCanceled = false;
+  const activeXhrs = new Set();
 
   const modal = document.getElementById('uploadModal');
   const dropZone = document.getElementById('uploadDropZone');
@@ -96,20 +98,44 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
   const browseLink = document.getElementById('uploadBrowseLink');
   const queueEl = document.getElementById('uploadQueue');
   const startBtn = document.getElementById('uploadStartBtn');
+  const stopBtn = document.getElementById('uploadStopBtn');
   const clearBtn = document.getElementById('uploadClearBtn');
   const summaryEl = document.getElementById('uploadSummary');
   const openBtn = document.getElementById('openUploadBtn');
   const closeBtn = document.getElementById('closeUploadBtn');
+  const minimizeBtn = document.getElementById('minimizeUploadBtn');
   const conflictDlg = document.getElementById('conflictDialog');
   const optionsDiv = document.getElementById('uploadOptions');
 
   if (!openBtn) return;
 
   openBtn.addEventListener('click', () => { modal.style.display = 'block'; });
-  closeBtn.addEventListener('click', closeModal);
-  window.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+  closeBtn.addEventListener('click', () => {
+    if (running > 0) {
+      if (confirm('Đang có video tải lên. Bạn có muốn dừng tất cả và thoát không?')) {
+        stopAllUploads();
+        closeModal();
+      }
+    } else closeModal();
+  });
+  minimizeBtn.addEventListener('click', () => { modal.style.display = 'none'; showToast('Đang tải lên dưới nền', 'info'); });
+  window.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
 
   function closeModal() { if (running > 0) return; modal.style.display = 'none'; resetQueue(); }
+
+  function stopAllUploads() {
+    isCanceled = true;
+    activeXhrs.forEach(xhr => xhr.abort());
+    activeXhrs.clear();
+    queue.forEach(item => { if (['uploading', 'pending', 'checking'].includes(item.status)) item.status = 'error'; });
+    running = 0;
+    renderQueue();
+    showToast('Đã dừng tất cả tải lên', 'warning');
+    stopBtn.style.display = 'none';
+    clearBtn.style.display = 'block';
+  }
+
+  stopBtn.addEventListener('click', stopAllUploads);
 
   dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
@@ -137,7 +163,6 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     clearBtn.style.display = (empty || running > 0) ? 'none' : 'block';
     if (empty) { summaryEl.textContent = ''; return; }
 
-    // Sort queue: uploading/checking first, then pending, then done/error/skipped
     const sortedQueue = [...queue].sort((a, b) => {
       const order = { uploading: 0, checking: 1, pending: 2, done: 3, error: 4, skipped: 5 };
       return (order[a.status] ?? 99) - (order[b.status] ?? 99);
@@ -170,7 +195,8 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
   async function startUploads() {
     let pending = queue.filter(q => q.status === 'pending');
     if (!pending.length) return;
-    startBtn.style.display = 'none'; clearBtn.style.display = 'none';
+    isCanceled = false;
+    startBtn.style.display = 'none'; clearBtn.style.display = 'none'; stopBtn.style.display = 'flex';
     pending.sort((a, b) => a.file.size - b.file.size);
     running = pending.length;
     const conflictMode = document.querySelector('input[name="conflictMode"]:checked')?.value || 'ask';
@@ -180,7 +206,7 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     const err = queue.filter(q => q.status === 'error').length;
     showToast(`Upload xong: ${done} thành công${err > 0 ? `, ${err} lỗi` : ''}`, err > 0 ? 'warning' : 'success');
     summaryEl.textContent = `Hoàn tất: ${done}/${queue.length} thành công`;
-    clearBtn.style.display = 'block';
+    clearBtn.style.display = 'block'; stopBtn.style.display = 'none';
     if (typeof loadVideos === 'function' && done > 0) loadVideos();
   }
 
@@ -188,15 +214,17 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     const active = new Set(); let i = 0;
     return new Promise(resolve => {
       function next() {
+        if (isCanceled) { resolve(); return; }
         while (active.size < MAX_PARALLEL && i < items.length) {
+          if (isCanceled) break;
           const item = items[i++];
           const p = uploadFile(item, conflictMode).finally(() => {
             active.delete(p); next();
-            if (active.size === 0 && i >= items.length) resolve();
+            if (active.size === 0 && (i >= items.length || isCanceled)) resolve();
           });
           active.add(p);
         }
-        if (items.length === 0) resolve();
+        if (items.length === 0 || isCanceled) resolve();
       }
       next();
     });
@@ -218,12 +246,14 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     const checkRes = await fetch(`api.php?action=check_exists&file=${encodeURIComponent(item.file.name)}`).then(r => r.json()).catch(() => ({ exists: false }));
     let overwrite = false, keepBoth = false;
     if (checkRes.exists) {
+      if (isCanceled) return;
       let action = conflictMode;
       if (conflictMode === 'ask') action = await askConflict(item.file.name);
       if (action === 'skip') { item.status = 'skipped'; updateItemUI(item); running--; return; }
       if (action === 'overwrite') overwrite = true;
       if (action === 'keepboth') keepBoth = true;
     }
+    if (isCanceled) return;
     item.status = 'uploading'; updateItemUI(item);
     const file = item.file;
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -231,6 +261,7 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     const chunkProgress = new Array(totalChunks).fill(0);
 
     function uploadChunk(ci) {
+      if (isCanceled) return Promise.reject(new Error('Aborted'));
       const start = ci * CHUNK_SIZE;
       const chunk = file.slice(start, start + CHUNK_SIZE);
       const fd = new FormData();
@@ -255,19 +286,21 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
       let idx = 0;
       await new Promise((resolve, reject) => {
         function next() {
+          if (isCanceled) { reject(new Error('Aborted')); return; }
           while (active.size < CHUNK_PARALLEL && idx < indices.length) {
+            if (isCanceled) break;
             const ci = indices[idx++];
             const p = uploadChunk(ci).then(res => {
               if (!res.success) throw new Error(res.error || 'Chunk failed');
             }).finally(() => {
               active.delete(p);
-              if (active.size === 0 && idx >= indices.length) resolve();
+              if (active.size === 0 && (idx >= indices.length || isCanceled)) resolve();
               else next();
             });
             p.catch(reject);
             active.add(p);
           }
-          if (indices.length === 0) resolve();
+          if (indices.length === 0 || isCanceled) resolve();
         }
         next();
       });
@@ -280,11 +313,14 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
 
   function xhrChunk(url, fd, onProgress) {
     return new Promise((resolve, reject) => {
+      if (isCanceled) return reject(new Error('Aborted'));
       const xhr = new XMLHttpRequest();
+      activeXhrs.add(xhr);
       xhr.open('POST', url, true);
       xhr.upload.onprogress = ev => { if (ev.lengthComputable) onProgress((ev.loaded / ev.total) * 100); };
-      xhr.onload = () => { try { resolve(JSON.parse(xhr.responseText)); } catch (e) { reject(new Error('Parse error')); } };
-      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.onload = () => { activeXhrs.delete(xhr); try { resolve(JSON.parse(xhr.responseText)); } catch (e) { reject(new Error('Parse error')); } };
+      xhr.onerror = () => { activeXhrs.delete(xhr); reject(new Error('Network error')); };
+      xhr.onabort = () => { activeXhrs.delete(xhr); reject(new Error('Aborted')); };
       xhr.send(fd);
     });
   }
@@ -354,7 +390,6 @@ if (document.getElementById('videoGrid')) {
     });
   }
   applyViewMode(currentView);
-
 
   function renderSkeleton() {
     const g = document.getElementById('videoGrid');
