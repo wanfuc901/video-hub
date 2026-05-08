@@ -1,0 +1,74 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─── CI: Kiểm tra syntax PHP ────────────────────────────────────────
+  lint:
+    name: PHP Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Lint all PHP files
+        run: |
+          find . -name "*.php" \
+            -not -path "./.git/*" \
+            -not -path "./vendor/*" \
+            | sort \
+            | xargs -I{} php -l {}
+
+  # ─── CD: Deploy lên Termux (chỉ khi push main, không chạy trên PR) ──
+  deploy:
+    name: Deploy to Termux
+    needs: lint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # Termux không có systemd — restart bằng nohup thủ công
+          script: |
+            set -e
+
+            cd ${{ secrets.APP_PATH }}
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "✓ Code updated"
+
+            # Xoá list cache cũ để lần load đầu sau deploy build lại
+            rm -f thumbnails/_list_cache.json
+
+            echo "✓ Cache cleared"
+
+            # Restart PHP server với 4 worker song song
+            pkill -f 'php.*-S 0.0.0.0:8080' || true
+            sleep 1
+            PHP_CLI_SERVER_WORKERS=4 nohup php \
+              -d upload_max_filesize=10000M \
+              -d post_max_size=10000M \
+              -d memory_limit=512M \
+              -S 0.0.0.0:8080 \
+              -t ${{ secrets.APP_PATH }} \
+              >> ~/server.log 2>&1 &
+
+            sleep 2
+            echo "✓ Server restarted with 4 workers"
