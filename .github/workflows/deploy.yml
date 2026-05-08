@@ -52,21 +52,12 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-      - name: Fetch Cloudflare Access token (service token auth)
-        env:
-          CF_Access_Client_Id: ${{ secrets.CF_CLIENT_ID }}
-          CF_Access_Client_Secret: ${{ secrets.CF_CLIENT_SECRET }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-        run: |
-          # Fetches a JWT using the service token and caches it locally.
-          # cloudflared access ssh will pick it up automatically.
-          cloudflared access token --app=https://${SSH_HOST}
-
       - name: Deploy via cloudflared SSH
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           APP_PATH: ${{ secrets.APP_PATH }}
+          # cloudflared reads these to authenticate as service token (no browser needed)
           CF_Access_Client_Id: ${{ secrets.CF_CLIENT_ID }}
           CF_Access_Client_Secret: ${{ secrets.CF_CLIENT_SECRET }}
         run: |
