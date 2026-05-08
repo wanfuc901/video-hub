@@ -109,8 +109,9 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
 
   if (!openBtn) return;
 
-  openBtn.addEventListener('click', () => { modal.style.display = 'block'; });
-  closeBtn.addEventListener('click', () => {
+  openBtn.addEventListener('click', () => { if (modal) modal.style.display = 'block'; });
+  
+  if (closeBtn) closeBtn.addEventListener('click', () => {
     if (running > 0) {
       if (confirm('Đang có video tải lên. Bạn có muốn dừng tất cả và thoát không?')) {
         stopAllUploads();
@@ -118,10 +119,12 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
       }
     } else closeModal();
   });
-  minimizeBtn.addEventListener('click', () => { modal.style.display = 'none'; showToast('Đang tải lên dưới nền', 'info'); });
-  window.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+  
+  if (minimizeBtn) minimizeBtn.addEventListener('click', () => { if (modal) modal.style.display = 'none'; showToast('Đang tải lên dưới nền', 'info'); });
+  
+  window.addEventListener('click', e => { if (modal && e.target === modal) modal.style.display = 'none'; });
 
-  function closeModal() { if (running > 0) return; modal.style.display = 'none'; resetQueue(); }
+  function closeModal() { if (running > 0) return; if (modal) modal.style.display = 'none'; resetQueue(); }
 
   function stopAllUploads() {
     isCanceled = true;
@@ -131,18 +134,20 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     running = 0;
     renderQueue();
     showToast('Đã dừng tất cả tải lên', 'warning');
-    stopBtn.style.display = 'none';
-    clearBtn.style.display = 'block';
+    if (stopBtn) stopBtn.style.display = 'none';
+    if (clearBtn) clearBtn.style.display = 'block';
   }
 
-  stopBtn.addEventListener('click', stopAllUploads);
+  if (stopBtn) stopBtn.addEventListener('click', stopAllUploads);
 
-  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); addFiles(Array.from(e.dataTransfer.files)); });
-  dropZone.addEventListener('click', e => { if (e.target !== browseLink) fileInput.click(); });
-  browseLink.addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
-  fileInput.addEventListener('change', () => { addFiles(Array.from(fileInput.files)); fileInput.value = ''; });
+  if (dropZone) {
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); addFiles(Array.from(e.dataTransfer.files)); });
+    dropZone.addEventListener('click', e => { if (e.target !== browseLink && fileInput) fileInput.click(); });
+  }
+  if (browseLink) browseLink.addEventListener('click', e => { e.stopPropagation(); if (fileInput) fileInput.click(); });
+  if (fileInput) fileInput.addEventListener('change', () => { addFiles(Array.from(fileInput.files)); fileInput.value = ''; });
 
   function addFiles(files) {
     const exts = ['mp4', 'mkv', 'avi', 'mov', 'webm', 'm4v', 'flv', 'wmv', 'ts'];
@@ -156,6 +161,7 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
   }
 
   function renderQueue() {
+    if (!queueEl || !optionsDiv || !startBtn || !clearBtn || !summaryEl) return;
     const empty = queue.length === 0;
     queueEl.style.display = empty ? 'none' : 'flex';
     optionsDiv.style.display = empty ? 'none' : 'block';
@@ -189,14 +195,16 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
   window.removeQueueItem = function (id) { queue = queue.filter(q => q.id !== id); renderQueue(); };
   function resetQueue() { queue = []; renderQueue(); }
 
-  startBtn.addEventListener('click', startUploads);
-  clearBtn.addEventListener('click', resetQueue);
+  if (startBtn) startBtn.addEventListener('click', startUploads);
+  if (clearBtn) clearBtn.addEventListener('click', resetQueue);
 
   async function startUploads() {
     let pending = queue.filter(q => q.status === 'pending');
     if (!pending.length) return;
     isCanceled = false;
-    startBtn.style.display = 'none'; clearBtn.style.display = 'none'; stopBtn.style.display = 'flex';
+    if (startBtn) startBtn.style.display = 'none'; 
+    if (clearBtn) clearBtn.style.display = 'none'; 
+    if (stopBtn) stopBtn.style.display = 'flex';
     pending.sort((a, b) => a.file.size - b.file.size);
     running = pending.length;
     const conflictMode = document.querySelector('input[name="conflictMode"]:checked')?.value || 'ask';
@@ -205,8 +213,9 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     const done = queue.filter(q => q.status === 'done').length;
     const err = queue.filter(q => q.status === 'error').length;
     showToast(`Upload xong: ${done} thành công${err > 0 ? `, ${err} lỗi` : ''}`, err > 0 ? 'warning' : 'success');
-    summaryEl.textContent = `Hoàn tất: ${done}/${queue.length} thành công`;
-    clearBtn.style.display = 'block'; stopBtn.style.display = 'none';
+    if (summaryEl) summaryEl.textContent = `Hoàn tất: ${done}/${queue.length} thành công`;
+    if (clearBtn) clearBtn.style.display = 'block'; 
+    if (stopBtn) stopBtn.style.display = 'none';
     if (typeof loadVideos === 'function' && done > 0) loadVideos();
   }
 
@@ -232,12 +241,16 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
 
   function askConflict(fileName) {
     return new Promise(resolve => {
-      document.getElementById('conflictFileName').textContent = fileName;
-      conflictDlg.style.display = 'flex';
-      const cleanup = () => { conflictDlg.style.display = 'none'; };
-      document.getElementById('conflictOverwrite').onclick = () => { cleanup(); resolve('overwrite'); };
-      document.getElementById('conflictKeepBoth').onclick = () => { cleanup(); resolve('keepboth'); };
-      document.getElementById('conflictSkip').onclick = () => { cleanup(); resolve('skip'); };
+      const fnEl = document.getElementById('conflictFileName');
+      if (fnEl) fnEl.textContent = fileName;
+      if (conflictDlg) conflictDlg.style.display = 'flex';
+      const cleanup = () => { if (conflictDlg) conflictDlg.style.display = 'none'; };
+      const btnOverwrite = document.getElementById('conflictOverwrite');
+      const btnKeepBoth = document.getElementById('conflictKeepBoth');
+      const btnSkip = document.getElementById('conflictSkip');
+      if (btnOverwrite) btnOverwrite.onclick = () => { cleanup(); resolve('overwrite'); };
+      if (btnKeepBoth) btnKeepBoth.onclick = () => { cleanup(); resolve('keepboth'); };
+      if (btnSkip) btnSkip.onclick = () => { cleanup(); resolve('skip'); };
     });
   }
 
@@ -330,7 +343,7 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     const st = document.getElementById(`qi-status-${item.id}`);
     if (bar) bar.style.width = item.progress + '%';
     if (st) { st.textContent = statusLabel(item.status); st.style.cssText = statusColor(item.status); }
-    if (running > 0) summaryEl.textContent = `Đang upload... ${queue.filter(q => q.status === 'done').length}/${queue.length} hoàn thành`;
+    if (running > 0 && summaryEl) summaryEl.textContent = `Đang upload... ${queue.filter(q => q.status === 'done').length}/${queue.length} hoàn thành`;
   }
 
   function statusLabel(s) { return { pending: 'Chờ', checking: 'Kiểm tra', uploading: 'Đang up', done: 'Xong', error: 'Lỗi', skipped: 'Bỏ qua' }[s] || s; }
@@ -353,8 +366,13 @@ if (document.getElementById('videoGrid')) {
   const searchBarContainer = document.getElementById('searchBarContainer');
   if (mobSearchBtn) {
     mobSearchBtn.addEventListener('click', () => {
-      searchBarContainer.classList.toggle('active');
-      if (searchBarContainer.classList.contains('active')) document.getElementById('searchInput').focus();
+      if (searchBarContainer) {
+        searchBarContainer.classList.toggle('active');
+        if (searchBarContainer.classList.contains('active')) {
+          const si = document.getElementById('searchInput');
+          if (si) si.focus();
+        }
+      }
     });
   }
 
@@ -394,7 +412,10 @@ if (document.getElementById('videoGrid')) {
   function renderSkeleton() {
     const g = document.getElementById('videoGrid');
     if (!g) return;
-    g.style.display = ''; document.getElementById('emptyState').style.display = 'none'; g.innerHTML = '';
+    g.style.display = ''; 
+    const es = document.getElementById('emptyState');
+    if (es) es.style.display = 'none'; 
+    g.innerHTML = '';
     for (let i = 0; i < 8; i++) g.innerHTML += `<div class="skeleton-card"><div class="thumb skeleton"></div><div class="line1 skeleton"></div><div class="line2 skeleton"></div></div>`;
   }
 
@@ -552,26 +573,31 @@ if (document.getElementById('videoGrid')) {
         window.location.href = `player.php?path=${encodeURIComponent(v.path)}`;
       };
 
-      card.querySelector('.thumbnail-wrapper').onclick = e => {
+      const thumbWrapper = card.querySelector('.thumbnail-wrapper');
+      if (thumbWrapper) thumbWrapper.onclick = e => {
         if (e.target.closest('.fav-btn') || e.target.closest('.delete-hover-btn') || e.target.closest('.select-checkbox')) return;
         openVideo();
       };
-      card.querySelector('.card-info').onclick = e => {
+      const cardInfo = card.querySelector('.card-info');
+      if (cardInfo) cardInfo.onclick = e => {
         if (e.target.closest('.edit-title-btn-small')) return;
         openVideo();
       };
 
-      card.querySelector('.select-checkbox').onclick = e => { e.stopPropagation(); toggleSelectCard(card, v.name); };
-      card.querySelector('.fav-btn').onclick = e => { e.stopPropagation(); const added = toggleFav(v.name); e.currentTarget.classList.toggle('active', added); e.currentTarget.querySelector('svg').setAttribute('fill', added ? 'currentColor' : 'none'); if (currentTab === 'favorites') renderByTab(); };
-      card.querySelector('.delete-hover-btn').onclick = e => { e.stopPropagation(); confirmDeleteSingle(v.name); };
+      const selCb = card.querySelector('.select-checkbox');
+      if (selCb) selCb.onclick = e => { e.stopPropagation(); toggleSelectCard(card, v.name); };
+      const favB = card.querySelector('.fav-btn');
+      if (favB) favB.onclick = e => { e.stopPropagation(); const added = toggleFav(v.name); e.currentTarget.classList.toggle('active', added); const s = e.currentTarget.querySelector('svg'); if (s) s.setAttribute('fill', added ? 'currentColor' : 'none'); if (currentTab === 'favorites') renderByTab(); };
+      const delB = card.querySelector('.delete-hover-btn');
+      if (delB) delB.onclick = e => { e.stopPropagation(); confirmDeleteSingle(v.name); };
 
       const titleEl = card.querySelector('.video-title');
-      const editBtn = titleEl.querySelector('.edit-title-btn-small');
-      editBtn.onclick = e => {
+      const editBtn = titleEl?.querySelector('.edit-title-btn-small');
+      if (editBtn) editBtn.onclick = e => {
         e.stopPropagation();
         const input = document.createElement('input');
         input.className = 'title-edit-input'; input.value = displayName;
-        titleEl.replaceWith(input); input.focus();
+        if (titleEl) titleEl.replaceWith(input); input.focus();
         const save = () => {
           const nv = input.value.trim();
           if (nv && nv !== displayName) {
@@ -593,12 +619,12 @@ if (document.getElementById('videoGrid')) {
     dlg.style.display = 'flex';
     const ok = document.getElementById('confirmDeleteOk');
     const cancel = document.getElementById('confirmDeleteCancel');
-    ok.onclick = () => {
-      dlg.style.display = 'none'; ok.onclick = null; cancel.onclick = null;
+    if (ok) ok.onclick = () => {
+      dlg.style.display = 'none'; ok.onclick = null; if (cancel) cancel.onclick = null;
       fetch('api.php?action=delete', { method: 'POST', body: JSON.stringify({ file: name }), headers: { 'Content-Type': 'application/json' } })
         .then(r => r.json()).then(res => { if (res.success) { showToast('Đã xóa video', 'success'); loadVideos(); } else showToast('Xóa thất bại', 'error'); });
     };
-    cancel.onclick = () => { dlg.style.display = 'none'; ok.onclick = null; cancel.onclick = null; };
+    if (cancel) cancel.onclick = () => { dlg.style.display = 'none'; if (ok) ok.onclick = null; cancel.onclick = null; };
   }
 
   function toggleSelectCard(card, name) {
@@ -647,21 +673,21 @@ if (document.getElementById('videoGrid')) {
     dlg.style.display = 'flex';
     const ok = document.getElementById('confirmDeleteOk');
     const cancel = document.getElementById('confirmDeleteCancel');
-    ok.onclick = () => {
-      dlg.style.display = 'none'; ok.onclick = null; cancel.onclick = null;
+    if (ok) ok.onclick = () => {
+      dlg.style.display = 'none'; ok.onclick = null; if (cancel) cancel.onclick = null;
       fetch('api.php?action=delete_many', { method: 'POST', body: JSON.stringify({ files: [...selectedFiles] }), headers: { 'Content-Type': 'application/json' } })
         .then(r => r.json()).then(res => { showToast(`Đã xóa ${res.deleted} video`, 'success'); exitSelectMode(); loadVideos(); });
     };
-    cancel.onclick = () => { dlg.style.display = 'none'; ok.onclick = null; cancel.onclick = null; };
+    if (cancel) cancel.onclick = () => { dlg.style.display = 'none'; if (ok) ok.onclick = null; cancel.onclick = null; };
   };
 
   const delMany = document.getElementById('deleteManyBtn');
   if (delMany) delMany.onclick = () => { const d = document.getElementById('deleteManyDialog'); if (d) d.style.display = 'flex'; };
   const dmSel = document.getElementById('dmSelecting');
-  if (dmSel) dmSel.onclick = () => { document.getElementById('deleteManyDialog').style.display = 'none'; enterSelectMode(); };
+  if (dmSel) dmSel.onclick = () => { const d = document.getElementById('deleteManyDialog'); if (d) d.style.display = 'none'; enterSelectMode(); };
   const dmAll = document.getElementById('dmDeleteAll');
   if (dmAll) dmAll.onclick = () => {
-    document.getElementById('deleteManyDialog').style.display = 'none';
+    const d = document.getElementById('deleteManyDialog'); if (d) d.style.display = 'none';
     const dlg = document.getElementById('confirmDeleteDialog');
     const msg = document.getElementById('confirmDeleteMsg');
     if (!dlg || !msg) return;
@@ -669,16 +695,16 @@ if (document.getElementById('videoGrid')) {
     dlg.style.display = 'flex';
     const ok = document.getElementById('confirmDeleteOk');
     const cancel = document.getElementById('confirmDeleteCancel');
-    ok.onclick = () => {
-      dlg.style.display = 'none'; ok.onclick = null; cancel.onclick = null;
+    if (ok) ok.onclick = () => {
+      dlg.style.display = 'none'; ok.onclick = null; if (cancel) cancel.onclick = null;
       const allNames = allVideos.map(v => v.name);
       fetch('api.php?action=delete_many', { method: 'POST', body: JSON.stringify({ files: allNames }), headers: { 'Content-Type': 'application/json' } })
         .then(r => r.json()).then(res => { showToast(`Đã xóa ${res.deleted} video`, 'success'); loadVideos(); });
     };
-    cancel.onclick = () => { dlg.style.display = 'none'; ok.onclick = null; cancel.onclick = null; };
+    if (cancel) cancel.onclick = () => { dlg.style.display = 'none'; if (ok) ok.onclick = null; cancel.onclick = null; };
   };
   const dmCancel = document.getElementById('dmCancel');
-  if (dmCancel) dmCancel.onclick = () => { document.getElementById('deleteManyDialog').style.display = 'none'; };
+  if (dmCancel) dmCancel.onclick = () => { const d = document.getElementById('deleteManyDialog'); if (d) d.style.display = 'none'; };
 
   function generateMissingThumbnails() {
     const missing = allVideos.filter(v => !v.thumbnail_exists).slice(0, 5);
@@ -782,7 +808,7 @@ if (document.getElementById('videoPlayer')) {
 
   const playIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
   const pauseIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
-  function togglePlay() { if (video.paused) { video.play(); if (playPauseBtn) playPauseBtn.innerHTML = pauseIcon; } else { video.pause(); if (playPauseBtn) playPauseBtn.innerHTML = playIcon; } }
+  function togglePlay() { if (video && video.paused) { video.play(); if (playPauseBtn) playPauseBtn.innerHTML = pauseIcon; } else if (video) { video.pause(); if (playPauseBtn) playPauseBtn.innerHTML = playIcon; } }
   if (playPauseBtn) playPauseBtn.addEventListener('click', togglePlay);
   if (video) video.addEventListener('click', togglePlay);
 
@@ -796,7 +822,7 @@ if (document.getElementById('videoPlayer')) {
   }
 
   if (seekBarContainer) seekBarContainer.addEventListener('mousedown', e => { isSeeking = true; updateSeek(e); document.addEventListener('mousemove', updateSeek); document.addEventListener('mouseup', stopSeek); });
-  function updateSeek(e) { const r = seekBarContainer.getBoundingClientRect(); let p = (e.clientX - r.left) / r.width; p = Math.max(0, Math.min(1, p)); if (seekBarFill) seekBarFill.style.width = (p * 100) + '%'; if (video && video.duration) video.currentTime = p * video.duration; }
+  function updateSeek(e) { if (!seekBarContainer) return; const r = seekBarContainer.getBoundingClientRect(); let p = (e.clientX - r.left) / r.width; p = Math.max(0, Math.min(1, p)); if (seekBarFill) seekBarFill.style.width = (p * 100) + '%'; if (video && video.duration) video.currentTime = p * video.duration; }
   function stopSeek() { isSeeking = false; document.removeEventListener('mousemove', updateSeek); document.removeEventListener('mouseup', stopSeek); }
 
   if (volumeSlider) volumeSlider.addEventListener('input', e => { if (video) { video.volume = e.target.value; video.muted = video.volume === 0; updateMuteIcon(); } });

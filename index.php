@@ -75,6 +75,7 @@
         Bắt đầu upload
       </button>
       <button id="uploadClearBtn" class="btn btn-ghost" style="display:none;">Xóa danh sách</button>
+      <button id="uploadStopBtn" class="btn btn-ghost" style="display:none; color:var(--error);">⏹ Dừng tất cả</button>
     </div>
     <div id="uploadSummary" style="margin-top:12px;font-size:13px;color:var(--text-gray);text-align:center;"></div>
   </div>
@@ -202,8 +203,5 @@
 </main>
 
 <script src="assets/app.js?v=<?= time() ?>"></script>
-</body>
-</html>
-="assets/app.js?v=<?= time() ?>"></script>
 </body>
 </html>
