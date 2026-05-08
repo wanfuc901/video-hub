@@ -431,10 +431,20 @@ main {
     .video-grid { grid-template-columns: repeat(2, 1fr); } 
     .player-layout { flex-direction: column; overflow: visible; height: auto; }
     .sidebar { width: 100%; border-left: none; border-top: 1px solid #333; height: auto; }
-    .main-player-area { height: 50vh; }
+    .main-player-area { height: auto; }
+    .custom-player-wrapper { height: auto; aspect-ratio: 16 / 9; }
 }
 @media (max-width: 480px) { 
     .video-grid { grid-template-columns: 1fr; } 
     header { padding: 0 16px; }
     .search-bar { max-width: 150px; }
+    
+    .player-controls { padding: 12px; gap: 8px; }
+    .controls-left, .controls-right { gap: 8px; }
+    .time-display { font-size: 11px; }
+    #volumeSlider { display: none; }
+    
+    .player-info-bar { flex-direction: column; gap: 16px; padding: 16px; }
+    .player-info-bar h1 { font-size: 18px; flex-wrap: wrap; }
+    .edit-title-btn { font-size: 12px; padding: 4px 6px; }
 }
