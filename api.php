@@ -12,13 +12,21 @@ if (!is_dir($videoDir))  @mkdir($videoDir, 0777, true);
 if (!is_dir($thumbDir))  @mkdir($thumbDir, 0777, true);
 if (!file_exists($titlesFile)) @file_put_contents($titlesFile, json_encode([]));
 
-$action = $_GET['action'] ?? 'list';
+$action    = $_GET['action'] ?? 'list';
+$cacheFile = $thumbDir . DIRECTORY_SEPARATOR . '_list_cache.json';
 
 function getTitles() { global $titlesFile; if(file_exists($titlesFile)){$d=file_get_contents($titlesFile);return json_decode($d,true)??[];}return []; }
 function saveTitles($t) { global $titlesFile; file_put_contents($titlesFile, json_encode($t, JSON_PRETTY_PRINT)); }
+function bustListCache() { global $cacheFile; @unlink($cacheFile); }
 
 if ($action === 'list') {
-    $titles=$getTitles=getTitles(); $videos=[]; $seen=[];
+    if (file_exists($cacheFile)) {
+        header('Content-Type: application/json');
+        header('Cache-Control: no-store');
+        readfile($cacheFile);
+        exit;
+    }
+    $titles = getTitles(); $videos = []; $seen = [];
     foreach ($scanDirs as $dir) {
         if (!is_dir($dir)) continue;
         $iter = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
@@ -27,13 +35,16 @@ if ($action === 'list') {
             $ext = strtolower($file->getExtension());
             if (!in_array($ext, $supportedExts)) continue;
             $fn = $file->getFilename();
-            if (isset($seen[$fn])) continue; $seen[$fn]=true;
+            if (isset($seen[$fn])) continue; $seen[$fn] = true;
             $key = md5($fn);
             $videos[] = ['name'=>$fn,'path'=>$file->getPathname(),'size'=>$file->getSize(),'ext'=>$ext,'title_custom'=>$titles[$fn]??null,'thumbnail_exists'=>file_exists($thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg'),'blur_exists'=>file_exists($thumbDir.DIRECTORY_SEPARATOR.$key.'_blur.jpg'),'mtime'=>$file->getMTime()];
         }
     }
-    usort($videos, fn($a,$b)=>$b['mtime']<=>$a['mtime']);
-    echo json_encode($videos); exit;
+    usort($videos, fn($a,$b) => $b['mtime'] <=> $a['mtime']);
+    $json = json_encode($videos);
+    file_put_contents($cacheFile, $json);
+    echo $json;
+    exit;
 }
 
 if ($action === 'check_exists') {
@@ -91,12 +102,13 @@ if ($action === 'upload_chunk') {
     fclose($out);
     flock($lock, LOCK_UN); fclose($lock); @unlink($lockFile);
     @rmdir($tmpDir);
+    bustListCache();
     echo json_encode(['success' => true, 'done' => true, 'file' => $finalName]); exit;
 }
 
 if ($action === 'update_title') {
     $data=json_decode(file_get_contents('php://input'),true); $file=$data['file']??''; $title=$data['title']??'';
-    if($file&&$title!==''){$t=getTitles();$t[$file]=$title;saveTitles($t);echo json_encode(['success'=>true]);}
+    if($file&&$title!==''){$t=getTitles();$t[$file]=$title;saveTitles($t);bustListCache();echo json_encode(['success'=>true]);}
     else{http_response_code(400);echo json_encode(['error'=>'Invalid']);} exit;
 }
 
@@ -105,6 +117,7 @@ if ($action === 'upload_thumbnail') {
     if($file&&$imageData){
         list($type,$imageData)=explode(';',$imageData); list(,$imageData)=explode(',',$imageData); $imageData=base64_decode($imageData);
         file_put_contents($thumbDir.DIRECTORY_SEPARATOR.md5($file).'.jpg',$imageData);
+        bustListCache();
         echo json_encode(['success'=>true]);
     }else{http_response_code(400);echo json_encode(['error'=>'No image']);} exit;
 }
@@ -138,17 +151,31 @@ if ($action === 'remove_blur') {
 
 if ($action === 'thumbnail') {
     $file=$_GET['file']??''; $p=$thumbDir.DIRECTORY_SEPARATOR.md5($file).'.jpg';
-    if(file_exists($p)){header('Content-Type: image/jpeg');header('Cache-Control: public, max-age=86400');readfile($p);}else http_response_code(404); exit;
+    if(file_exists($p)){
+        $etag='"'.filemtime($p).'"';
+        header('Content-Type: image/jpeg');
+        header('Cache-Control: public, max-age=604800');
+        header('ETag: '.$etag);
+        if(($_SERVER['HTTP_IF_NONE_MATCH']??'') === $etag){http_response_code(304);exit;}
+        readfile($p);
+    }else http_response_code(404); exit;
 }
 
 if ($action === 'thumbnail_blur') {
     $file=$_GET['file']??''; $p=$thumbDir.DIRECTORY_SEPARATOR.md5($file).'_blur.jpg';
-    if(file_exists($p)){header('Content-Type: image/jpeg');header('Cache-Control: public, max-age=86400');readfile($p);}else http_response_code(404); exit;
+    if(file_exists($p)){
+        $etag='"'.filemtime($p).'"';
+        header('Content-Type: image/jpeg');
+        header('Cache-Control: public, max-age=604800');
+        header('ETag: '.$etag);
+        if(($_SERVER['HTTP_IF_NONE_MATCH']??'') === $etag){http_response_code(304);exit;}
+        readfile($p);
+    }else http_response_code(404); exit;
 }
 
 if ($action === 'delete') {
     $data=json_decode(file_get_contents('php://input'),true); $file=$data['file']??'';
-    if($file){$fn=basename($file);$key=md5($fn);@unlink($videoDir.DIRECTORY_SEPARATOR.$fn);@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg');@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'_blur.jpg');$t=getTitles();unset($t[$fn]);saveTitles($t);echo json_encode(['success'=>true]);}
+    if($file){$fn=basename($file);$key=md5($fn);@unlink($videoDir.DIRECTORY_SEPARATOR.$fn);@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg');@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'_blur.jpg');$t=getTitles();unset($t[$fn]);saveTitles($t);bustListCache();echo json_encode(['success'=>true]);}
     else{http_response_code(400);echo json_encode(['error'=>'Invalid']);} exit;
 }
 
@@ -156,7 +183,7 @@ if ($action === 'delete_many') {
     $data=json_decode(file_get_contents('php://input'),true); $files=$data['files']??[];
     $deleted=0;$errors=[];$t=getTitles();
     foreach($files as $file){$fn=basename($file);if(!$fn)continue;$key=md5($fn);$tp=$videoDir.DIRECTORY_SEPARATOR.$fn;if(file_exists($tp)){@unlink($tp);@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg');@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'_blur.jpg');$deleted++;}else{$errors[]=$fn;}unset($t[$fn]);}
-    saveTitles($t);echo json_encode(['success'=>true,'deleted'=>$deleted,'errors'=>$errors]); exit;
+    saveTitles($t);bustListCache();echo json_encode(['success'=>true,'deleted'=>$deleted,'errors'=>$errors]); exit;
 }
 
 if ($action === 'stream') {
@@ -175,6 +202,6 @@ if ($action === 'stream') {
     if(isset($_SERVER['HTTP_RANGE']))header("Content-Range: bytes $begin-$end/$size");
     header('Content-Disposition: inline; filename='.basename($path));
     fseek($fm,$begin);$cur=$begin;
-    while(!feof($fm)&&$cur<=$end&&connection_status()==0){print fread($fm,min(256*1024,($end-$cur)+1));$cur+=256*1024;@ob_flush();flush();}
+    while(!feof($fm)&&$cur<=$end&&connection_status()==0){print fread($fm,min(1024*1024,($end-$cur)+1));$cur+=1024*1024;@ob_flush();flush();}
     fclose($fm);exit;
 }

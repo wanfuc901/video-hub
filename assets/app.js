@@ -236,7 +236,7 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     if (summaryEl) summaryEl.textContent = `Hoàn tất: ${done}/${queue.length} thành công`;
     if (clearBtn) clearBtn.style.display = 'block'; 
     if (stopBtn) stopBtn.style.display = 'none';
-    if (typeof loadVideos === 'function') loadVideos();
+    if (typeof loadVideos === 'function') loadVideos(true);
   }
 
   function askConflict(fileName) {
@@ -488,7 +488,35 @@ if (document.getElementById('videoGrid')) {
     for (let i = 0; i < 8; i++) g.innerHTML += `<div class="skeleton-card"><div class="thumb skeleton"></div><div class="line1 skeleton"></div><div class="line2 skeleton"></div></div>`;
   }
 
-  function loadVideos() {
+  const LIST_CACHE_KEY = 'vhhub_list_v1';
+
+  function loadVideos(bypassCache) {
+    if (!bypassCache) {
+      const raw = sessionStorage.getItem(LIST_CACHE_KEY);
+      if (raw) {
+        try {
+          allVideos = JSON.parse(raw);
+          renderByTab();
+          // revalidate in background — update silently if data changed
+          fetch('api.php?action=list')
+            .then(r => r.json())
+            .then(data => {
+              if (data.error) return;
+              const fresh = JSON.stringify(data);
+              if (fresh !== raw) {
+                allVideos = data;
+                sessionStorage.setItem(LIST_CACHE_KEY, fresh);
+                renderByTab();
+                generateMissingThumbnails();
+              }
+            })
+            .catch(() => {});
+          return;
+        } catch (e) { sessionStorage.removeItem(LIST_CACHE_KEY); }
+      }
+    } else {
+      sessionStorage.removeItem(LIST_CACHE_KEY);
+    }
     renderSkeleton();
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), 10000);
@@ -497,7 +525,9 @@ if (document.getElementById('videoGrid')) {
       .then(data => {
         clearTimeout(tid);
         if (data.error) { showToast(data.error, 'error'); return; }
-        allVideos = data; renderByTab(); generateMissingThumbnails();
+        allVideos = data;
+        sessionStorage.setItem(LIST_CACHE_KEY, JSON.stringify(data));
+        renderByTab(); generateMissingThumbnails();
       })
       .catch(err => {
         clearTimeout(tid);
@@ -707,7 +737,7 @@ if (document.getElementById('videoGrid')) {
     if (ok) ok.onclick = () => {
       dlg.style.display = 'none'; ok.onclick = null; if (cancel) cancel.onclick = null;
       fetch('api.php?action=delete', { method: 'POST', body: JSON.stringify({ file: name }), headers: { 'Content-Type': 'application/json' } })
-        .then(r => r.json()).then(res => { if (res.success) { showToast('Đã xóa video', 'success'); loadVideos(); } else showToast('Xóa thất bại', 'error'); });
+        .then(r => r.json()).then(res => { if (res.success) { showToast('Đã xóa video', 'success'); loadVideos(true); } else showToast('Xóa thất bại', 'error'); });
     };
     if (cancel) cancel.onclick = () => { dlg.style.display = 'none'; if (ok) ok.onclick = null; cancel.onclick = null; };
   }
@@ -761,7 +791,7 @@ if (document.getElementById('videoGrid')) {
     if (ok) ok.onclick = () => {
       dlg.style.display = 'none'; ok.onclick = null; if (cancel) cancel.onclick = null;
       fetch('api.php?action=delete_many', { method: 'POST', body: JSON.stringify({ files: [...selectedFiles] }), headers: { 'Content-Type': 'application/json' } })
-        .then(r => r.json()).then(res => { showToast(`Đã xóa ${res.deleted} video`, 'success'); exitSelectMode(); loadVideos(); });
+        .then(r => r.json()).then(res => { showToast(`Đã xóa ${res.deleted} video`, 'success'); exitSelectMode(); loadVideos(true); });
     };
     if (cancel) cancel.onclick = () => { dlg.style.display = 'none'; if (ok) ok.onclick = null; cancel.onclick = null; };
   };
@@ -784,7 +814,7 @@ if (document.getElementById('videoGrid')) {
       dlg.style.display = 'none'; ok.onclick = null; if (cancel) cancel.onclick = null;
       const allNames = allVideos.map(v => v.name);
       fetch('api.php?action=delete_many', { method: 'POST', body: JSON.stringify({ files: allNames }), headers: { 'Content-Type': 'application/json' } })
-        .then(r => r.json()).then(res => { showToast(`Đã xóa ${res.deleted} video`, 'success'); loadVideos(); });
+        .then(r => r.json()).then(res => { showToast(`Đã xóa ${res.deleted} video`, 'success'); loadVideos(true); });
     };
     if (cancel) cancel.onclick = () => { dlg.style.display = 'none'; if (ok) ok.onclick = null; cancel.onclick = null; };
   };
