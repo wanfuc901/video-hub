@@ -1,0 +1,137 @@
+:root {
+    --bg-color: #121212;
+    --text-color: #e0e0e0;
+    --card-bg: #1e1e1e;
+    --primary-color: #bb86fc;
+    --hover-bg: #2d2d2d;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+}
+
+header {
+    padding: 1rem 2rem;
+    background-color: var(--card-bg);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+header h1 {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+}
+
+#searchInput {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    border: none;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    outline: none;
+    flex-grow: 1;
+    max-width: 400px;
+}
+
+#searchInput:focus {
+    box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+main {
+    padding: 2rem;
+}
+
+.video-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.video-card {
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    padding: 1rem;
+    cursor: pointer;
+    transition: transform 0.2s, background-color 0.2s;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+}
+
+.video-card:hover {
+    transform: translateY(-4px);
+    background-color: var(--hover-bg);
+}
+
+.video-title {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    word-break: break-word;
+}
+
+.video-meta {
+    font-size: 0.85rem;
+    color: #888;
+    margin-top: auto;
+}
+
+.progress-bar-container {
+    height: 4px;
+    background-color: #333;
+    border-radius: 2px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background-color: var(--primary-color);
+    width: 0%;
+}
+
+/* Player Page Specific */
+.player-page header {
+    justify-content: flex-start;
+}
+
+.back-btn {
+    text-decoration: none;
+    color: var(--primary-color);
+    font-weight: bold;
+    margin-right: 1rem;
+}
+
+.video-container {
+    max-width: 1000px;
+    margin: 0 auto;
+    background: black;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+video {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+@media (max-width: 600px) {
+    main { padding: 1rem; }
+    header { padding: 1rem; }
+}
