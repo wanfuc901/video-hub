@@ -29,7 +29,7 @@ jobs:
             | sort \
             | xargs -I{} php -l {}
 
-  # ─── CD: Deploy lên Termux qua bore TCP tunnel ───────────────────────
+  # ─── CD: Deploy lên Termux qua Tailscale SSH ────────────────────────
   deploy:
     name: Deploy to Termux
     needs: lint
@@ -43,21 +43,16 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-      - name: Deploy via SSH (bore tunnel)
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          APP_PATH: ${{ secrets.APP_PATH }}
+      - name: Deploy via SSH (Tailscale)
         run: |
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
-            -p ${SSH_PORT} \
-            ${SSH_USER}@${SSH_HOST} << 'ENDSSH'
+            -p ${{ secrets.SSH_PORT }} \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
           set -e
 
-          cd "$APP_PATH"
+          cd ${{ secrets.APP_PATH }}
           git fetch origin main
           git reset --hard origin/main
           echo "✓ Code updated"
@@ -72,7 +67,7 @@ jobs:
             -d post_max_size=10000M \
             -d memory_limit=512M \
             -S 0.0.0.0:8080 \
-            -t "$APP_PATH" \
+            -t ${{ secrets.APP_PATH }} \
             >> ~/server.log 2>&1 &
 
           sleep 2
