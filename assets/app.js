@@ -84,7 +84,8 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
 // ═══════════════════════════════════════════════════════════════
 (function () {
   const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB
-  const MAX_PARALLEL = 3;
+  const MAX_PARALLEL = 3;             // số file upload cùng lúc
+  const CHUNK_PARALLEL = 4;           // số chunk song song mỗi file
 
   let queue = [];
   let running = 0;
@@ -135,7 +136,14 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     startBtn.style.display = (empty || running > 0) ? 'none' : 'flex';
     clearBtn.style.display = (empty || running > 0) ? 'none' : 'block';
     if (empty) { summaryEl.textContent = ''; return; }
-    queueEl.innerHTML = queue.map(item => `
+
+    // Sort queue: uploading/checking first, then pending, then done/error/skipped
+    const sortedQueue = [...queue].sort((a, b) => {
+      const order = { uploading: 0, checking: 1, pending: 2, done: 3, error: 4, skipped: 5 };
+      return (order[a.status] ?? 99) - (order[b.status] ?? 99);
+    });
+
+    queueEl.innerHTML = sortedQueue.map(item => `
       <div id="qi-${item.id}" style="border:1px solid var(--border);padding:10px 12px;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
           <span style="flex:1;font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(item.file.name)}">${escHtml(item.file.name)}</span>
@@ -217,21 +225,52 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
       if (action === 'keepboth') keepBoth = true;
     }
     item.status = 'uploading'; updateItemUI(item);
-    const file = item.file; const totalChunks = Math.ceil(file.size / CHUNK_SIZE); const uploadId = item.id;
+    const file = item.file;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const uploadId = item.id;
+    const chunkProgress = new Array(totalChunks).fill(0);
+
+    function uploadChunk(ci) {
+      const start = ci * CHUNK_SIZE;
+      const chunk = file.slice(start, start + CHUNK_SIZE);
+      const fd = new FormData();
+      fd.append('chunk', chunk, 'chunk');
+      fd.append('fileName', file.name);
+      fd.append('chunkIndex', ci);
+      fd.append('totalChunks', totalChunks);
+      fd.append('uploadId', uploadId);
+      fd.append('overwrite', overwrite ? 'true' : 'false');
+      fd.append('keepBoth', keepBoth ? 'true' : 'false');
+      return xhrChunk('api.php?action=upload_chunk', fd, pct => {
+        chunkProgress[ci] = pct / 100;
+        const total = chunkProgress.reduce((s, p) => s + p, 0);
+        item.progress = (total / totalChunks) * 100;
+        updateItemUI(item);
+      });
+    }
+
     try {
-      for (let ci = 0; ci < totalChunks; ci++) {
-        const start = ci * CHUNK_SIZE; const chunk = file.slice(start, start + CHUNK_SIZE);
-        const fd = new FormData();
-        fd.append('chunk', chunk, 'chunk'); fd.append('fileName', file.name);
-        fd.append('chunkIndex', ci); fd.append('totalChunks', totalChunks);
-        fd.append('uploadId', uploadId);
-        fd.append('overwrite', overwrite ? 'true' : 'false'); fd.append('keepBoth', keepBoth ? 'true' : 'false');
-        const res = await xhrChunk('api.php?action=upload_chunk', fd, pct => {
-          item.progress = ((ci / totalChunks) + (pct / 100 / totalChunks)) * 100;
-          updateItemUI(item);
-        });
-        if (!res.success) throw new Error(res.error || 'Chunk failed');
-      }
+      const indices = Array.from({ length: totalChunks }, (_, i) => i);
+      const active = new Set();
+      let idx = 0;
+      await new Promise((resolve, reject) => {
+        function next() {
+          while (active.size < CHUNK_PARALLEL && idx < indices.length) {
+            const ci = indices[idx++];
+            const p = uploadChunk(ci).then(res => {
+              if (!res.success) throw new Error(res.error || 'Chunk failed');
+            }).finally(() => {
+              active.delete(p);
+              if (active.size === 0 && idx >= indices.length) resolve();
+              else next();
+            });
+            p.catch(reject);
+            active.add(p);
+          }
+          if (indices.length === 0) resolve();
+        }
+        next();
+      });
       item.status = 'done'; item.progress = 100;
     } catch (e) {
       item.status = 'error'; item.errorMsg = e.message;
@@ -405,7 +444,7 @@ if (document.getElementById('videoGrid')) {
     // Apply fundamental classes
     grid.className = 'video-grid';
     if (isGlobalBlur()) grid.classList.add('blur-all');
-    
+
     if (targetId === 'videoGrid') {
       if (currentView === 'list') grid.classList.add('view-list');
       if (currentView === 'detail') grid.classList.add('view-detail');
@@ -422,7 +461,6 @@ if (document.getElementById('videoGrid')) {
       grid.style.display = '';
       if (empty) empty.style.display = 'none';
     }
-
 
     const favs = getFavs();
     videos.forEach((v, idx) => {

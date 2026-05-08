@@ -204,7 +204,7 @@ main { margin-top: 64px; }
 
 /* ── MODALS ──────────────────────────────────────────────── */
 .modal { display:none;position:fixed;z-index:200;inset:0;background:rgba(17,17,17,.5);backdrop-filter:blur(4px); }
-.modal-content { background:var(--white);margin:8vh auto;padding:32px;width:90%;max-width:500px;border:1px solid var(--border);position:relative;box-shadow:0 24px 64px rgba(0,0,0,.12); }
+.modal-content { background:var(--white);margin:4vh auto;padding:32px;width:90%;max-width:500px;border:1px solid var(--border);position:relative;box-shadow:0 24px 64px rgba(0,0,0,.12); max-height: 92vh; overflow-y: auto; }
 .close-btn { position:absolute;top:16px;right:16px;font-size:24px;cursor:pointer;color:var(--text-gray); }
 .close-btn:hover { color:var(--brand-900); }
 
