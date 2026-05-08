@@ -102,26 +102,43 @@ if (document.getElementById('videoGrid')) {
         renderGrid(filtered);
     });
 
+    document.getElementById('sortSelect').addEventListener('change', () => {
+        renderByTab();
+    });
+
     function getFilteredVideos(tab) {
-        if (tab === 'all') return allVideos;
-        if (tab === 'favorites') {
+        let filtered = [];
+        if (tab === 'all') filtered = [...allVideos];
+        else if (tab === 'favorites') {
             const favs = getFavs();
-            return allVideos.filter(v => favs.includes(v.name));
+            filtered = allVideos.filter(v => favs.includes(v.name));
         }
-        if (tab === 'history') {
+        else if (tab === 'history') {
             const hist = getHistory().map(h => h.name);
-            // sort by history order
-            let filtered = [];
             hist.forEach(hname => {
                 const vid = allVideos.find(v => v.name === hname);
                 if(vid) filtered.push(vid);
             });
-            return filtered;
         }
-        if (tab === 'suggest') {
-            return [...allVideos].sort(() => 0.5 - Math.random()).slice(0, 8);
+        else if (tab === 'suggest') {
+            filtered = [...allVideos].sort(() => 0.5 - Math.random()).slice(0, 8);
         }
-        return allVideos;
+
+        if (tab === 'all' || tab === 'favorites') {
+            const sortVal = document.getElementById('sortSelect').value;
+            filtered.sort((a, b) => {
+                if(sortVal === 'newest') return b.mtime - a.mtime;
+                if(sortVal === 'oldest') return a.mtime - b.mtime;
+                if(sortVal === 'largest') return b.size - a.size;
+                if(sortVal === 'smallest') return a.size - b.size;
+                const nameA = (a.title_custom || a.name).toLowerCase();
+                const nameB = (b.title_custom || b.name).toLowerCase();
+                if(sortVal === 'az') return nameA.localeCompare(nameB);
+                if(sortVal === 'za') return nameB.localeCompare(nameA);
+                return 0;
+            });
+        }
+        return filtered;
     }
 
     function renderByTab() { renderGrid(getFilteredVideos(currentTab)); }
@@ -157,7 +174,12 @@ if (document.getElementById('videoGrid')) {
                 </div>
                 ${progress ? `<div class="progress-bar-container"><div class="progress-bar" style="width:50%"></div></div>` : ''}
                 <div class="card-info">
-                    <div class="video-title" data-name="${v.name}">${displayName}</div>
+                    <div class="video-title" data-name="${v.name}" style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <span style="flex:1; padding-right:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;" title="${displayName}">${displayName}</span>
+                        <button class="edit-title-btn-small" style="background:none; border:none; cursor:pointer; color:var(--text-gray);" title="Sửa tên">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                    </div>
                     <div class="video-meta">${formatBytes(v.size)}</div>
                 </div>
             `;
@@ -166,7 +188,8 @@ if (document.getElementById('videoGrid')) {
 
             // Title inline edit
             const titleEl = card.querySelector('.video-title');
-            titleEl.addEventListener('click', (e) => {
+            const editBtn = titleEl.querySelector('.edit-title-btn-small');
+            editBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const input = document.createElement('input');
                 input.className = 'title-edit-input';
@@ -204,18 +227,26 @@ if (document.getElementById('videoGrid')) {
 
     // Auto generate thumbnails via hidden canvas
     function generateMissingThumbnails() {
-        const missing = allVideos.filter(v => !v.thumbnail_exists).slice(0, 5); // process 5 at a time
+        const missing = allVideos.filter(v => !v.thumbnail_exists).slice(0, 3);
         if(missing.length === 0) return;
 
         missing.forEach(v => {
             const video = document.createElement('video');
             video.src = `api.php?action=stream&path=${encodeURIComponent(v.path)}`;
-            video.crossOrigin = "anonymous";
-            video.currentTime = 3; // 3rd second
+            video.preload = 'metadata';
             video.muted = true;
-            
+            video.playsInline = true;
+            video.style.display = 'none';
+            document.body.appendChild(video);
+
+            const cleanup = () => { if(video.parentNode) video.parentNode.removeChild(video); };
+
             video.addEventListener('loadeddata', () => {
-                video.addEventListener('seeked', () => {
+                video.currentTime = Math.min(3, video.duration / 2 || 1);
+            });
+
+            video.addEventListener('seeked', () => {
+                try {
                     const canvas = document.createElement('canvas');
                     canvas.width = 640; canvas.height = 360;
                     const ctx = canvas.getContext('2d');
@@ -229,11 +260,13 @@ if (document.getElementById('videoGrid')) {
                         .then(r => r.json()).then(res => {
                             if(res.success) {
                                 v.thumbnail_exists = true;
-                                renderByTab(); // update UI to show new thumb
+                                renderByTab(); 
                             }
-                        });
-                }, {once: true});
+                            cleanup();
+                        }).catch(cleanup);
+                } catch(e) { cleanup(); }
             });
+            video.addEventListener('error', cleanup);
         });
     }
 

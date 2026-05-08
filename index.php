@@ -56,11 +56,24 @@
             <p>Your minimalist local video streaming center.</p>
         </section>
 
-        <div class="tabs" id="mainTabs">
-            <div class="tab active" data-tab="all">Tất cả</div>
-            <div class="tab" data-tab="favorites">Yêu thích</div>
-            <div class="tab" data-tab="history">Đã xem gần đây</div>
-            <div class="tab" data-tab="suggest">Đề xuất</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+            <div class="tabs" id="mainTabs" style="margin-bottom: 0; border-bottom: none; display: flex; gap: 24px;">
+                <div class="tab active" data-tab="all">Tất cả</div>
+                <div class="tab" data-tab="favorites">Yêu thích</div>
+                <div class="tab" data-tab="history">Đã xem gần đây</div>
+                <div class="tab" data-tab="suggest">Đề xuất</div>
+            </div>
+            <div class="sort-container" style="display: flex; align-items: center; gap: 8px;">
+                <span class="mono-font" style="font-size: 14px; color: var(--text-gray);">Sắp xếp:</span>
+                <select id="sortSelect" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 0; font-family: 'DM Sans'; outline: none; background: var(--white); color: var(--brand-900); cursor: pointer;">
+                    <option value="newest">Mới nhất</option>
+                    <option value="oldest">Cũ nhất</option>
+                    <option value="az">Tên (A-Z)</option>
+                    <option value="za">Tên (Z-A)</option>
+                    <option value="largest">Dung lượng (Lớn nhất)</option>
+                    <option value="smallest">Dung lượng (Nhỏ nhất)</option>
+                </select>
+            </div>
         </div>
 
         <div class="video-grid" id="videoGrid">

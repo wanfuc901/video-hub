@@ -57,8 +57,9 @@ if (empty($path)) die("No video specified.");
                     <div style="font-family:'DM Mono'; color:var(--text-gray); font-size:12px; margin-bottom:8px;">Video Hub > <span id="breadcrumbTitle"><?= htmlspecialchars($filename) ?></span></div>
                     <h1 class="syne-font" id="mainTitleDisplay">
                         <span id="titleText"><?= htmlspecialchars($filename) ?></span>
-                        <button class="edit-title-btn" id="editTitleBtn" title="Edit Title">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        <button class="edit-title-btn" id="editTitleBtn" title="Edit Title" style="display:inline-flex; align-items:center; gap:6px; font-size:14px; font-family:'DM Sans'; padding:4px 8px; border:1px solid #333; border-radius:4px; margin-left:12px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            Sửa Tên
                         </button>
                     </h1>
                 </div>
