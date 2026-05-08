@@ -492,10 +492,24 @@ if (document.getElementById('videoGrid')) {
 
   function loadVideos() {
     renderSkeleton();
-    fetch('api.php?action=list').then(r => r.json()).then(data => {
-      if (data.error) { showToast(data.error, 'error'); return; }
-      allVideos = data; renderByTab(); generateMissingThumbnails();
-    }).catch(() => showToast('Lỗi tải danh sách', 'error'));
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 10000);
+    fetch('api.php?action=list', { signal: ctrl.signal })
+      .then(r => r.json())
+      .then(data => {
+        clearTimeout(tid);
+        if (data.error) { showToast(data.error, 'error'); return; }
+        allVideos = data; renderByTab(); generateMissingThumbnails();
+      })
+      .catch(err => {
+        clearTimeout(tid);
+        const msg = err.name === 'AbortError' ? 'Tải danh sách quá lâu, thử lại' : 'Lỗi tải danh sách';
+        showToast(msg, 'error');
+        const g = document.getElementById('videoGrid');
+        const es = document.getElementById('emptyState');
+        if (g) g.style.display = 'none';
+        if (es) { es.style.display = 'block'; const p = es.querySelector('p'); if (p) p.textContent = msg; }
+      });
   }
   window.loadVideos = loadVideos;
   loadVideos();
@@ -516,11 +530,11 @@ if (document.getElementById('videoGrid')) {
 
   const searchInput = document.getElementById('searchInput');
   if (searchInput) {
-    searchInput.addEventListener('input', e => {
+    searchInput.addEventListener('input', debounce(e => {
       const term = e.target.value.toLowerCase();
       let filtered = getFilteredVideos(currentTab).filter(v => (v.title_custom || v.name).toLowerCase().includes(term) || v.name.toLowerCase().includes(term));
       renderGrid(filtered, 'videoGrid');
-    });
+    }, 250));
   }
 
   const sortSelect = document.getElementById('sortSelect');
