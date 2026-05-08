@@ -233,15 +233,16 @@ if (document.getElementById('videoGrid')) {
         missing.forEach(v => {
             const video = document.createElement('video');
             video.src = `api.php?action=stream&path=${encodeURIComponent(v.path)}`;
-            video.preload = 'metadata';
+            video.preload = 'auto'; // Force load on iOS
             video.muted = true;
             video.playsInline = true;
+            video.setAttribute('webkit-playsinline', 'true');
             video.style.display = 'none';
             document.body.appendChild(video);
 
             const cleanup = () => { if(video.parentNode) video.parentNode.removeChild(video); };
 
-            video.addEventListener('loadeddata', () => {
+            video.addEventListener('loadedmetadata', () => {
                 video.currentTime = Math.min(3, video.duration / 2 || 1);
             });
 
@@ -282,6 +283,9 @@ if (document.getElementById('videoGrid')) {
                 } catch(e) { cleanup(); }
             });
             video.addEventListener('error', cleanup);
+            
+            // Trigger load for iOS
+            video.load();
         });
     }
 
