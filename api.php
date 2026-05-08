@@ -8,6 +8,51 @@ $supportedExts = $config['supported_extensions'];
 
 $action = $_GET['action'] ?? 'list';
 
+if ($action === 'upload') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed.']);
+        exit;
+    }
+
+    if (!isset($_FILES['video']) || $_FILES['video']['error'] !== UPLOAD_ERR_OK) {
+        http_response_code(400);
+        $errMsg = isset($_FILES['video']) ? 'Upload error code: ' . $_FILES['video']['error'] : 'No file uploaded or file exceeds server limits.';
+        echo json_encode(['error' => $errMsg]);
+        exit;
+    }
+
+    $file = $_FILES['video'];
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    
+    if (!in_array($ext, $supportedExts)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Unsupported file type: ' . $ext]);
+        exit;
+    }
+
+    // Ensure directory exists
+    if (!is_dir($videoDir)) {
+        @mkdir($videoDir, 0777, true);
+    }
+
+    $fileName = basename($file['name']);
+    $targetPath = $videoDir . DIRECTORY_SEPARATOR . $fileName;
+
+    if (file_exists($targetPath)) {
+        $fileName = time() . '_' . $fileName;
+        $targetPath = $videoDir . DIRECTORY_SEPARATOR . $fileName;
+    }
+
+    if (move_uploaded_file($file['tmp_name'], $targetPath)) {
+        echo json_encode(['success' => true, 'message' => 'Upload successful.', 'file' => $fileName]);
+    } else {
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to save the uploaded file.']);
+    }
+    exit;
+}
+
 if ($action === 'list') {
     if (!is_dir($videoDir)) {
         echo json_encode(['error' => 'Video directory not found or not accessible.']);
