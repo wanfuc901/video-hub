@@ -1,6 +1,276 @@
-function showLoader() { document.getElementById('pageLoader').style.display = 'block'; document.querySelector('#pageLoader .bar').style.width = '30%'; }
-function updateLoader(pct) { document.querySelector('#pageLoader .bar').style.width = pct + '%'; }
-function hideLoader() { document.querySelector('#pageLoader .bar').style.width = '100%'; setTimeout(() => { document.getElementById('pageLoader').style.display = 'none'; }, 200); }
+function showLoader() { }
+function updateLoader(pct) { }
+function hideLoader() { }
+
+// ============================================================
+// MULTI-FILE CHUNKED UPLOADER
+// ============================================================
+(function () {
+    const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB per chunk
+    const MAX_PARALLEL = 2;              // upload 2 files đồng thời
+
+    let queue = [];       // { file, id, status, progress, resolve, reject }
+    let running = 0;
+
+    // ---- DOM refs ----
+    const modal       = document.getElementById('uploadModal');
+    const dropZone    = document.getElementById('uploadDropZone');
+    const fileInput   = document.getElementById('videoFileInput');
+    const browseLink  = document.getElementById('uploadBrowseLink');
+    const queueEl     = document.getElementById('uploadQueue');
+    const startBtn    = document.getElementById('uploadStartBtn');
+    const clearBtn    = document.getElementById('uploadClearBtn');
+    const summaryEl   = document.getElementById('uploadSummary');
+    const openBtn     = document.getElementById('openUploadBtn');
+    const closeBtn    = document.getElementById('closeUploadBtn');
+    const conflictDlg = document.getElementById('conflictDialog');
+
+    if (!openBtn) return; // not on index page
+
+    // ---- Modal open/close ----
+    openBtn.addEventListener('click', () => { modal.style.display = 'block'; });
+    closeBtn.addEventListener('click', closeModal);
+    window.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+    function closeModal() {
+        if (running > 0) return; // don't close while uploading
+        modal.style.display = 'none';
+        resetQueue();
+    }
+
+    // ---- Drop zone ----
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = 'var(--accent)'; dropZone.style.background = 'rgba(124,108,252,0.06)'; });
+    dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = ''; dropZone.style.background = ''; });
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.style.borderColor = ''; dropZone.style.background = '';
+        addFiles(Array.from(e.dataTransfer.files));
+    });
+    dropZone.addEventListener('click', e => { if (e.target !== browseLink) fileInput.click(); });
+    browseLink.addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
+    fileInput.addEventListener('change', () => { addFiles(Array.from(fileInput.files)); fileInput.value = ''; });
+
+    // ---- Add files to queue ----
+    function addFiles(files) {
+        const videoExts = ['mp4','mkv','avi','mov','webm','m4v','flv','wmv','ts'];
+        files.forEach(f => {
+            const ext = f.name.split('.').pop().toLowerCase();
+            if (!videoExts.includes(ext)) return;
+            if (queue.find(q => q.file.name === f.name && q.status === 'pending')) return; // dedupe
+            queue.push({ file: f, id: crypto.randomUUID(), status: 'pending', progress: 0, conflictAction: null });
+        });
+        renderQueue();
+    }
+
+    function renderQueue() {
+        if (queue.length === 0) {
+            queueEl.style.display = 'none';
+            startBtn.style.display = 'none';
+            clearBtn.style.display = 'none';
+            summaryEl.textContent = '';
+            return;
+        }
+        queueEl.style.display = 'flex';
+        startBtn.style.display = running > 0 ? 'none' : 'flex';
+        clearBtn.style.display = running > 0 ? 'none' : 'block';
+        queueEl.innerHTML = queue.map(item => `
+            <div id="qi-${item.id}" style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                    <span style="flex:1;font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(item.file.name)}">${escHtml(item.file.name)}</span>
+                    <span style="font-size:11px;color:var(--text-gray);white-space:nowrap;">${fmtSize(item.file.size)}</span>
+                    <span id="qi-status-${item.id}" style="font-size:11px;font-weight:600;${statusColor(item.status)}">${statusLabel(item.status)}</span>
+                    ${item.status === 'pending' ? `<button onclick="removeQueueItem('${item.id}')" style="background:none;border:none;cursor:pointer;color:var(--text-gray);font-size:16px;line-height:1;padding:0 2px;">×</button>` : ''}
+                </div>
+                <div style="height:3px;background:var(--border);border-radius:2px;overflow:hidden;">
+                    <div id="qi-bar-${item.id}" style="height:100%;background:var(--accent);width:${item.progress}%;transition:width 0.15s;border-radius:2px;"></div>
+                </div>
+            </div>
+        `).join('');
+
+        const total = queue.length;
+        const done  = queue.filter(q => q.status === 'done').length;
+        const err   = queue.filter(q => q.status === 'error').length;
+        summaryEl.textContent = running > 0
+            ? `Đang upload... ${done}/${total} xong`
+            : total > 0 ? `${total} file · ${fmtSize(queue.reduce((s,q)=>s+q.file.size,0))}` : '';
+    }
+
+    window.removeQueueItem = function(id) {
+        queue = queue.filter(q => q.id !== id);
+        renderQueue();
+    };
+
+    function resetQueue() {
+        queue = [];
+        renderQueue();
+    }
+
+    // ---- Start uploads ----
+    startBtn.addEventListener('click', startUploads);
+    clearBtn.addEventListener('click', resetQueue);
+
+    async function startUploads() {
+        const pending = queue.filter(q => q.status === 'pending');
+        if (pending.length === 0) return;
+        startBtn.style.display = 'none';
+        clearBtn.style.display = 'none';
+        running = pending.length;
+
+        // Process with max parallel limit
+        const semaphore = new Array(MAX_PARALLEL).fill(null).map(() => Promise.resolve());
+        let idx = 0;
+        const results = pending.map(() => {
+            const slot = idx % MAX_PARALLEL;
+            idx++;
+            semaphore[slot] = semaphore[slot].then(async () => {
+                const item = pending[idx - MAX_PARALLEL + slot] || pending.find(p => p.status === 'pending');
+                if (!item || item.status !== 'pending') return;
+                await uploadFile(item);
+            });
+            return semaphore[slot];
+        });
+
+        // Simpler sequential-with-parallelism approach
+        await uploadQueue(pending);
+
+        running = 0;
+        const done = queue.filter(q => q.status === 'done').length;
+        const err  = queue.filter(q => q.status === 'error').length;
+        summaryEl.textContent = `Hoàn tất: ${done} thành công${err > 0 ? `, ${err} lỗi` : ''}`;
+        clearBtn.style.display = 'block';
+        if (done > 0) loadVideos();
+    }
+
+    async function uploadQueue(items) {
+        const active = new Set();
+        let i = 0;
+        return new Promise(resolve => {
+            function next() {
+                while (active.size < MAX_PARALLEL && i < items.length) {
+                    const item = items[i++];
+                    const p = uploadFile(item).finally(() => {
+                        active.delete(p);
+                        next();
+                        if (active.size === 0 && i >= items.length) resolve();
+                    });
+                    active.add(p);
+                }
+                if (items.length === 0) resolve();
+            }
+            next();
+        });
+    }
+
+    // ---- Conflict resolution ----
+    function askConflict(fileName) {
+        return new Promise(resolve => {
+            document.getElementById('conflictFileName').textContent = fileName;
+            conflictDlg.style.display = 'flex';
+            const onOverwrite  = () => { cleanup(); resolve('overwrite'); };
+            const onKeepBoth   = () => { cleanup(); resolve('keepboth'); };
+            const onSkip       = () => { cleanup(); resolve('skip'); };
+            document.getElementById('conflictOverwrite').addEventListener('click', onOverwrite,  { once: true });
+            document.getElementById('conflictKeepBoth').addEventListener('click', onKeepBoth,   { once: true });
+            document.getElementById('conflictSkip').addEventListener('click', onSkip,       { once: true });
+            function cleanup() { conflictDlg.style.display = 'none'; }
+        });
+    }
+
+    // ---- Upload single file via chunks ----
+    async function uploadFile(item) {
+        item.status = 'checking';
+        updateItemUI(item);
+
+        // 1. Check conflict
+        const checkRes = await fetch(`api.php?action=check_exists&file=${encodeURIComponent(item.file.name)}`).then(r => r.json()).catch(() => ({ exists: false }));
+        let overwrite = false, keepBoth = false;
+        if (checkRes.exists) {
+            const action = await askConflict(item.file.name);
+            if (action === 'skip')     { item.status = 'skipped'; updateItemUI(item); running--; return; }
+            if (action === 'overwrite') overwrite = true;
+            if (action === 'keepboth') keepBoth = true;
+        }
+
+        // 2. Chunked upload
+        item.status = 'uploading';
+        updateItemUI(item);
+
+        const file       = item.file;
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        const uploadId   = item.id;
+
+        try {
+            for (let ci = 0; ci < totalChunks; ci++) {
+                const start = ci * CHUNK_SIZE;
+                const chunk = file.slice(start, start + CHUNK_SIZE);
+
+                const fd = new FormData();
+                fd.append('chunk', chunk, 'chunk');
+                fd.append('fileName', file.name);
+                fd.append('chunkIndex', ci);
+                fd.append('totalChunks', totalChunks);
+                fd.append('uploadId', uploadId);
+                fd.append('overwrite', overwrite ? 'true' : 'false');
+                fd.append('keepBoth',  keepBoth  ? 'true' : 'false');
+
+                const res = await xhrChunk('api.php?action=upload_chunk', fd, pct => {
+                    item.progress = ((ci / totalChunks) + pct / 100 / totalChunks) * 100;
+                    updateItemUI(item);
+                });
+
+                if (!res.success) throw new Error(res.error || 'Chunk failed');
+            }
+            item.status = 'done';
+            item.progress = 100;
+        } catch (e) {
+            item.status = 'error';
+            item.errorMsg = e.message;
+        }
+        updateItemUI(item);
+        running--;
+        renderQueue(); // refresh summary
+    }
+
+    function xhrChunk(url, fd, onProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', url, true);
+            xhr.upload.onprogress = ev => { if (ev.lengthComputable) onProgress((ev.loaded / ev.total) * 100); };
+            xhr.onload = () => {
+                try { resolve(JSON.parse(xhr.responseText)); }
+                catch (e) { reject(new Error('JSON parse error')); }
+            };
+            xhr.onerror = () => reject(new Error('Network error'));
+            xhr.send(fd);
+        });
+    }
+
+    function updateItemUI(item) {
+        const bar    = document.getElementById(`qi-bar-${item.id}`);
+        const status = document.getElementById(`qi-status-${item.id}`);
+        if (bar)    bar.style.width = item.progress + '%';
+        if (status) { status.textContent = statusLabel(item.status); status.style.cssText = statusColor(item.status); }
+        summaryEl.textContent = running > 0 ? `Đang upload... ${queue.filter(q=>q.status==='done').length}/${queue.length} xong` : summaryEl.textContent;
+    }
+
+    // ---- Helpers ----
+    function statusLabel(s) {
+        return { pending:'Chờ', checking:'Kiểm tra', uploading:'Đang up', done:'✓ Xong', error:'✗ Lỗi', skipped:'Bỏ qua' }[s] || s;
+    }
+    function statusColor(s) {
+        const map = { done:'color:#4ade80;', error:'color:#f87171;', uploading:'color:var(--accent);', skipped:'color:var(--text-gray);' };
+        return map[s] || 'color:var(--text-gray);';
+    }
+    function fmtSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024**2) return (bytes/1024).toFixed(1) + ' KB';
+        if (bytes < 1024**3) return (bytes/1024**2).toFixed(1) + ' MB';
+        return (bytes/1024**3).toFixed(2) + ' GB';
+    }
+    function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+})();
 
 function showToast(msg, type = 'success') {
     const container = document.getElementById('toastContainer');
@@ -302,110 +572,81 @@ if (document.getElementById('videoGrid')) {
                 video.crossOrigin = 'anonymous';
                 video.muted = true;
                 video.playsInline = true;
-                video.preload = 'metadata';
-                video.style.cssText = 'position:fixed;opacity:0;pointer-events:none;top:-9999px;width:1px;height:1px;';
+                video.preload = 'auto'; 
+                video.style.cssText = 'position:fixed;opacity:0;pointer-events:none;top:-9999px;width:160px;height:90px;';
                 document.body.appendChild(video);
-                const cleanup = () => { try { video.parentNode.removeChild(video); } catch(e){} };
+                
+                const cleanup = () => { try { video.pause(); video.src = ''; video.parentNode?.removeChild(video); } catch(e){} };
+                let captured = false;
+
+                const captureFrame = () => {
+                    if (captured) return;
+                    if (video.videoWidth === 0) return;
+                    
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const maxDim = 640;
+                        let w = video.videoWidth;
+                        let h = video.videoHeight;
+                        if (w > h) {
+                            if (w > maxDim) { h = h * (maxDim / w); w = maxDim; }
+                        } else {
+                            if (h > maxDim) { w = w * (maxDim / h); h = maxDim; }
+                        }
+                        canvas.width = w;
+                        canvas.height = h;
+                        
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(video, 0, 0, w, h);
+                        
+                        // Check center pixel for black frame
+                        const pixel = ctx.getImageData(w/2, h/2, 1, 1).data;
+                        if (pixel[0] === 0 && pixel[1] === 0 && pixel[2] === 0 && pixel[3] === 255) {
+                            if (video.currentTime < 10) {
+                                video.currentTime = Math.min(video.duration * 0.3, 15);
+                                return;
+                            }
+                        }
+
+                        captured = true;
+                        canvas.toBlob(blob => {
+                            const fd = new FormData();
+                            fd.append('file', v.name);
+                            fd.append('image', canvas.toDataURL('image/jpeg', 0.85));
+                            fetch('api.php?action=upload_thumbnail', { method: 'POST', body: fd })
+                                .then(r => r.json()).then(res => {
+                                    if (res.success) {
+                                        v.thumbnail_exists = true;
+                                        const img = document.querySelector(`[data-file="${CSS.escape(v.name)}"] .thumbnail-wrapper img`);
+                                        if (img) img.src = `api.php?action=thumbnail&file=${encodeURIComponent(v.name)}&t=${Date.now()}`;
+                                        else renderByTab();
+                                    }
+                                    cleanup();
+                                }).catch(cleanup);
+                        }, 'image/jpeg', 0.85);
+                    } catch(e) {
+                        console.warn('Thumbnail capture failed for', v.name, e);
+                        cleanup();
+                    }
+                };
+
                 video.addEventListener('loadedmetadata', () => {
                     const seekTo = Math.min(video.duration * 0.1, 5);
                     video.currentTime = seekTo > 0 ? seekTo : 1;
                 });
+                
                 video.addEventListener('seeked', () => {
-                    setTimeout(() => {
-                        try {
-                            const canvas = document.createElement('canvas');
-                            canvas.width = 640;
-                            canvas.height = 360;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(video, 0, 0, 640, 360);
-                            const pixel = ctx.getImageData(0, 0, 1, 1).data;
-                            if (pixel[0] === 0 && pixel[1] === 0 && pixel[2] === 0 && pixel[3] === 255) {
-                                video.currentTime = Math.min(video.duration * 0.3, 15);
-                                return;
-                            }
-                            canvas.toBlob(blob => {
-                                const fd = new FormData();
-                                fd.append('file', v.name);
-                                fd.append('image', canvas.toDataURL('image/jpeg', 0.85));
-                                fetch('api.php?action=upload_thumbnail', { method: 'POST', body: fd })
-                                    .then(r => r.json()).then(res => {
-                                        if (res.success) {
-                                            v.thumbnail_exists = true;
-                                            const img = document.querySelector(`[data-file="${CSS.escape(v.name)}"] .thumbnail-wrapper img`);
-                                            if (img) img.src = `api.php?action=thumbnail&file=${encodeURIComponent(v.name)}&t=${Date.now()}`;
-                                            else renderByTab();
-                                        }
-                                        cleanup();
-                                    }).catch(cleanup);
-                            }, 'image/jpeg', 0.85);
-                        } catch(e) {
-                            console.warn('Thumbnail capture failed for', v.name, e);
-                            cleanup();
-                        }
-                    }, 200);
+                    setTimeout(captureFrame, 300);
                 });
-                let seekCount = 0;
-                video.addEventListener('seeked', () => {
-                    seekCount++;
-                });
+
                 video.addEventListener('error', (e) => {
                     console.warn('Video load error for thumbnail:', v.name, e);
                     cleanup();
                 });
+                
                 video.src = `api.php?action=stream&path=${encodeURIComponent(v.path)}`;
                 video.load();
             }, idx * 800);
-        });
-    }
-
-    const uploadModal = document.getElementById('uploadModal');
-    if (document.getElementById('openUploadBtn')) {
-        document.getElementById('openUploadBtn').addEventListener('click', () => {
-            uploadModal.style.display = 'block';
-            document.getElementById('uploadStatus').textContent = '';
-            document.getElementById('uploadForm').reset();
-            document.getElementById('uploadProgressContainer').style.display = 'none';
-        });
-        document.getElementById('closeUploadBtn').addEventListener('click', () => uploadModal.style.display = 'none');
-        window.addEventListener('click', (e) => { if (e.target == uploadModal) uploadModal.style.display = 'none'; });
-
-        document.getElementById('uploadForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const file = document.getElementById('videoFile').files[0];
-            if (!file) return;
-
-            const btn = document.getElementById('submitUploadBtn');
-            const status = document.getElementById('uploadStatus');
-            const pCont = document.getElementById('uploadProgressContainer');
-            const pBar = document.getElementById('uploadProgressBar');
-
-            btn.disabled = true; status.textContent = 'Uploading...'; status.style.color = 'var(--text-gray)';
-            pCont.style.display = 'block'; pBar.style.width = '0%';
-
-            const fd = new FormData(); fd.append('video', file);
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', 'api.php?action=upload', true);
-
-            xhr.upload.onprogress = (ev) => {
-                if (ev.lengthComputable) {
-                    const pct = (ev.loaded / ev.total) * 100;
-                    pBar.style.width = pct + '%';
-                }
-            };
-            xhr.onload = () => {
-                btn.disabled = false;
-                if (xhr.status === 200) {
-                    try {
-                        const res = JSON.parse(xhr.responseText);
-                        if (res.success) {
-                            status.textContent = 'Upload thành công!'; status.style.color = 'var(--success)';
-                            setTimeout(() => { uploadModal.style.display = 'none'; loadVideos(); }, 1500);
-                        } else { status.textContent = 'Lỗi: ' + res.error; status.style.color = 'var(--error)'; }
-                    } catch (e) { status.textContent = 'Lỗi phản hồi'; status.style.color = 'var(--error)'; }
-                } else { status.textContent = 'Lỗi server: ' + xhr.status; status.style.color = 'var(--error)'; }
-            };
-            xhr.onerror = () => { btn.disabled = false; status.textContent = 'Lỗi mạng'; status.style.color = 'var(--error)'; };
-            xhr.send(fd);
         });
     }
 }

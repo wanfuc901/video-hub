@@ -68,7 +68,91 @@ if ($action === 'list') {
     exit;
 }
 
-if ($action === 'upload') {
+if ($action === 'check_exists') {
+    $fileName = basename($_GET['file'] ?? '');
+    if (!$fileName) { echo json_encode(['error' => 'No file']); exit; }
+    $targetPath = $videoDir . DIRECTORY_SEPARATOR . $fileName;
+    echo json_encode(['exists' => file_exists($targetPath)]);
+    exit;
+}
+
+if ($action === 'upload_chunk') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit; }
+
+    set_time_limit(0);
+    ini_set('memory_limit', '256M');
+
+    $fileName  = basename($_POST['fileName']  ?? '');
+    $chunkIdx  = (int)($_POST['chunkIndex']   ?? 0);
+    $totalChunks = (int)($_POST['totalChunks'] ?? 1);
+    $uploadId  = preg_replace('/[^a-zA-Z0-9_-]/', '', $_POST['uploadId'] ?? '');
+    $overwrite = ($_POST['overwrite'] ?? 'false') === 'true';
+    $keepBoth  = ($_POST['keepBoth']  ?? 'false') === 'true';
+
+    if (!$fileName || !$uploadId) {
+        http_response_code(400); echo json_encode(['error' => 'Missing params']); exit;
+    }
+
+    $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+    if (!in_array($ext, $supportedExts)) {
+        http_response_code(400); echo json_encode(['error' => 'Unsupported type']); exit;
+    }
+
+    if (!isset($_FILES['chunk']) || $_FILES['chunk']['error'] !== UPLOAD_ERR_OK) {
+        http_response_code(400); echo json_encode(['error' => 'Chunk error: ' . ($_FILES['chunk']['error'] ?? 'unknown')]); exit;
+    }
+
+    // Temp dir per uploadId
+    $tmpDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'vhhub_' . $uploadId;
+    if (!is_dir($tmpDir)) @mkdir($tmpDir, 0777, true);
+
+    $chunkPath = $tmpDir . DIRECTORY_SEPARATOR . 'chunk_' . str_pad($chunkIdx, 6, '0', STR_PAD_LEFT);
+    if (!move_uploaded_file($_FILES['chunk']['tmp_name'], $chunkPath)) {
+        http_response_code(500); echo json_encode(['error' => 'Chunk save failed']); exit;
+    }
+
+    // Check if all chunks arrived
+    $arrived = glob($tmpDir . DIRECTORY_SEPARATOR . 'chunk_*');
+    if (count($arrived) < $totalChunks) {
+        echo json_encode(['success' => true, 'done' => false, 'received' => count($arrived)]);
+        exit;
+    }
+
+    // Determine final filename
+    $finalName = $fileName;
+    $targetPath = $videoDir . DIRECTORY_SEPARATOR . $finalName;
+
+    if (file_exists($targetPath)) {
+        if ($keepBoth) {
+            $base = pathinfo($fileName, PATHINFO_FILENAME);
+            $finalName = $base . '_' . date('Ymd_His') . '.' . $ext;
+            $targetPath = $videoDir . DIRECTORY_SEPARATOR . $finalName;
+        } elseif (!$overwrite) {
+            // Shouldn't happen — client always sends one of the flags
+            http_response_code(409); echo json_encode(['error' => 'conflict']); exit;
+        }
+        // overwrite: just write to same path
+    }
+
+    // Assemble chunks
+    sort($arrived);
+    $out = fopen($targetPath, 'wb');
+    if (!$out) { http_response_code(500); echo json_encode(['error' => 'Cannot write destination']); exit; }
+
+    foreach ($arrived as $chunk) {
+        $in = fopen($chunk, 'rb');
+        while (!feof($in)) { fwrite($out, fread($in, 1024 * 1024)); }
+        fclose($in);
+        @unlink($chunk);
+    }
+    fclose($out);
+    @rmdir($tmpDir);
+
+    echo json_encode(['success' => true, 'done' => true, 'file' => $finalName]);
+    exit;
+}
+
+
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405); exit;
     }
@@ -198,7 +282,13 @@ if ($action === 'stream') {
     }
 
     header('Access-Control-Allow-Origin: *');
-    header("Content-Type: video/mp4"); 
+    header('Access-Control-Allow-Headers: Range');
+    header('Cross-Origin-Resource-Policy: cross-origin');
+    header('Timing-Allow-Origin: *');
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    $mimeMap = ['mp4'=>'video/mp4','mkv'=>'video/x-matroska','avi'=>'video/x-msvideo','mov'=>'video/quicktime','webm'=>'video/webm','m4v'=>'video/mp4'];
+    $mime = $mimeMap[$ext] ?? 'video/mp4';
+    header("Content-Type: $mime");
     header('Cache-Control: public, must-revalidate, max-age=0');
     header('Pragma: no-cache');  
     header('Accept-Ranges: bytes');

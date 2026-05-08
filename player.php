@@ -8,7 +8,8 @@ if (empty($path)) die("No video specified.");
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Playing: <?= htmlspecialchars($filename) ?></title>
+    <title>Playing: <?= htmlspecialchars($filename) ?> — VHHub</title>
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
     <link rel="stylesheet" href="assets/style.css?v=<?= time() ?>">
 </head>
 <body class="player-page">

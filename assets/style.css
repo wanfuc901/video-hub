@@ -329,15 +329,6 @@ main {
     to { transform: translateX(0); opacity: 1; }
 }
 
-/* Page Loader */
-#pageLoader {
-    position: fixed; top: 0; left: 0; width: 100%; height: 2px; z-index: 9999;
-    background: var(--brand-50); display: none;
-}
-#pageLoader .bar {
-    height: 100%; background: var(--accent); width: 0%; transition: width 0.2s ease;
-}
-
 /* Player Page */
 .player-page {
     background: var(--brand-900);

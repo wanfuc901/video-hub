@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Hub</title>
+    <title>VHHub</title>
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
     <link rel="stylesheet" href="assets/style.css?v=<?= time() ?>">
 </head>
 <body>
-    <div id="pageLoader"><div class="bar"></div></div>
+    <script src="assets/loader.js"></script>
     <div id="toastContainer"></div>
 
     <header id="mainHeader">
@@ -37,20 +38,54 @@
     </header>
     
     <div id="uploadModal" class="modal">
-        <div class="modal-content">
-            <span class="close-btn" id="closeUploadBtn">&times;</span>
-            <h2 class="syne-font" style="margin-bottom:20px;">Upload Video</h2>
-            <form id="uploadForm">
-                <div style="margin-bottom: 20px;">
-                    <label style="display:block; margin-bottom:8px; font-weight:500;">Select Video (Max 10GB):</label>
-                    <input type="file" id="videoFile" name="video" accept="video/*" required style="width:100%; padding:10px; border:1px dashed var(--border);">
-                </div>
-                <button type="submit" id="submitUploadBtn" class="btn btn-primary" style="width:100%;">Start Upload</button>
-                <div id="uploadStatus" style="margin-top: 10px; font-size:14px; text-align:center;"></div>
-                <div class="progress-bar-container" id="uploadProgressContainer" style="display:none; height: 4px; margin-top: 15px; background:var(--border);">
-                    <div class="progress-bar" id="uploadProgressBar" style="width: 0%; background:var(--accent);"></div>
-                </div>
-            </form>
+        <div class="modal-content" style="max-width:560px;width:95vw;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+                <h2 class="syne-font">Upload Video</h2>
+                <span class="close-btn" id="closeUploadBtn" style="position:static;font-size:24px;cursor:pointer;">&times;</span>
+            </div>
+
+            <!-- Drop Zone -->
+            <div id="uploadDropZone" style="
+                border: 2px dashed var(--border);
+                border-radius: 12px;
+                padding: 40px 24px;
+                text-align: center;
+                cursor: pointer;
+                transition: border-color 0.2s, background 0.2s;
+                margin-bottom: 16px;
+            ">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" style="margin-bottom:12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <div style="font-weight:600;margin-bottom:6px;">Kéo thả video vào đây</div>
+                <div style="font-size:13px;color:var(--text-gray);">hoặc <span style="color:var(--accent);text-decoration:underline;cursor:pointer;" id="uploadBrowseLink">chọn file</span> · MP4, MKV, AVI, MOV, WEBM · Không giới hạn số lượng</div>
+                <input type="file" id="videoFileInput" accept="video/*" multiple style="display:none;">
+            </div>
+
+            <!-- Queue List -->
+            <div id="uploadQueue" style="display:none;max-height:300px;overflow-y:auto;margin-bottom:16px;display:flex;flex-direction:column;gap:8px;"></div>
+
+            <!-- Actions -->
+            <div style="display:flex;gap:10px;">
+                <button id="uploadStartBtn" class="btn btn-accent" style="flex:1;display:none;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Bắt đầu upload
+                </button>
+                <button id="uploadClearBtn" class="btn btn-ghost" style="display:none;">Xóa tất cả</button>
+            </div>
+            <div id="uploadSummary" style="margin-top:12px;font-size:13px;color:var(--text-gray);text-align:center;"></div>
+        </div>
+    </div>
+
+    <!-- Conflict Dialog -->
+    <div id="conflictDialog" style="display:none;position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;">
+        <div style="background:var(--surface,#1a1a1a);border:1px solid var(--border);border-radius:14px;padding:28px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <div style="font-size:20px;margin-bottom:6px;">⚠️ File đã tồn tại</div>
+            <div id="conflictFileName" style="font-weight:600;margin-bottom:8px;word-break:break-all;"></div>
+            <div style="font-size:13px;color:var(--text-gray);margin-bottom:20px;">File này đã có trên server. Bạn muốn làm gì?</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <button id="conflictOverwrite" class="btn btn-accent" style="width:100%;">Ghi đè (Overwrite)</button>
+                <button id="conflictKeepBoth" class="btn btn-ghost" style="width:100%;">Giữ cả hai (đổi tên)</button>
+                <button id="conflictSkip" class="btn btn-ghost" style="width:100%;opacity:0.6;">Bỏ qua file này</button>
+            </div>
         </div>
     </div>
 
