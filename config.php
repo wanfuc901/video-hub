@@ -1,8 +1,8 @@
 <?php
 // config.php
 return [
-    // Default video directory on Termux Android
     'video_dir' => '/storage/emulated/0/Videos',
-    // Supported extensions
+    'thumb_dir' => __DIR__ . '/thumbnails',
+    'titles_file' => __DIR__ . '/titles.json',
     'supported_extensions' => ['mp4', 'mkv', 'avi', 'mov', 'webm', 'm4v']
 ];

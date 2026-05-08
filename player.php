@@ -1,53 +1,83 @@
 <?php
 $path = $_GET['path'] ?? '';
-$name = basename($path);
-if (empty($path)) {
-    die("No video specified.");
-}
+$filename = basename($path);
+if (empty($path)) die("No video specified.");
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Playing: <?= htmlspecialchars($name) ?></title>
+    <title>Playing: <?= htmlspecialchars($filename) ?></title>
     <link rel="stylesheet" href="assets/style.css">
 </head>
 <body class="player-page">
+    <div id="toastContainer"></div>
     <header>
-        <a href="index.php" class="back-btn">&larr; Back to Hub</a>
-        <h2><?= htmlspecialchars($name) ?></h2>
+        <a href="index.php" class="logo" style="padding-left:24px;">
+            <svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 2L2 22h20L12 2zm0 6l5 10H7l5-10z"/></svg>
+            <span class="syne-font">VH<span style="color:white">Hub</span></span>
+        </a>
     </header>
-    <main>
-        <div class="video-container">
-            <video id="videoPlayer" controls>
-                <source src="api.php?action=stream&path=<?= urlencode($path) ?>" type="video/mp4">
-                Your browser does not support HTML video.
-            </video>
+
+    <div class="player-layout">
+        <div class="main-player-area">
+            <div class="custom-player-wrapper" id="playerWrapper">
+                <video id="videoPlayer" src="api.php?action=stream&path=<?= urlencode($path) ?>"></video>
+                <div class="player-controls" id="playerControls">
+                    <div class="seek-bar-container" id="seekBarContainer">
+                        <div class="seek-bar-fill" id="seekBarFill"></div>
+                    </div>
+                    <div class="controls-row">
+                        <div class="controls-left">
+                            <button class="control-btn" id="playPauseBtn">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            </button>
+                            <button class="control-btn" id="muteBtn">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                            </button>
+                            <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="1" style="width: 80px;">
+                            <span class="time-display"><span id="currentTimeDisplay">00:00</span> / <span id="durationDisplay">00:00</span></span>
+                        </div>
+                        <div class="controls-right">
+                            <button class="control-btn" id="speedBtn" style="font-family:'DM Mono'; font-size:14px;">1x</button>
+                            <button class="control-btn" id="pipBtn" title="Picture in Picture">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><rect x="12" y="14" width="7" height="5" rx="1" ry="1"/></svg>
+                            </button>
+                            <button class="control-btn" id="fullscreenBtn">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="player-info-bar">
+                <div>
+                    <div style="font-family:'DM Mono'; color:var(--text-gray); font-size:12px; margin-bottom:8px;">Video Hub > <span id="breadcrumbTitle"><?= htmlspecialchars($filename) ?></span></div>
+                    <h1 class="syne-font" id="mainTitleDisplay">
+                        <span id="titleText"><?= htmlspecialchars($filename) ?></span>
+                        <button class="edit-title-btn" id="editTitleBtn" title="Edit Title">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                    </h1>
+                </div>
+                <button class="btn btn-outline fav-toggle-btn" id="playerFavBtn" style="border-color:#333; color:white;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                    Yêu thích
+                </button>
+            </div>
         </div>
-    </main>
+        <div class="sidebar">
+            <h3>Đề xuất cho bạn</h3>
+            <div id="sidebarSuggests"></div>
+        </div>
+    </div>
+
     <script>
-        const videoPlayer = document.getElementById('videoPlayer');
-        const videoPath = <?= json_encode($path) ?>;
-        const progressKey = 'video_progress_' + videoPath;
-
-        // Load saved progress
-        const savedProgress = localStorage.getItem(progressKey);
-        if (savedProgress) {
-            videoPlayer.currentTime = parseFloat(savedProgress);
-        }
-
-        // Save progress periodically
-        videoPlayer.addEventListener('timeupdate', () => {
-            if (videoPlayer.currentTime > 0 && !videoPlayer.ended) {
-                localStorage.setItem(progressKey, videoPlayer.currentTime);
-            }
-        });
-
-        // Clear progress when ended
-        videoPlayer.addEventListener('ended', () => {
-            localStorage.removeItem(progressKey);
-        });
+        const CURRENT_FILE = <?= json_encode($filename) ?>;
+        const CURRENT_PATH = <?= json_encode($path) ?>;
     </script>
+    <script src="assets/app.js"></script>
 </body>
 </html>
