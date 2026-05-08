@@ -248,10 +248,25 @@ if (document.getElementById('videoGrid')) {
             video.addEventListener('seeked', () => {
                 try {
                     const canvas = document.createElement('canvas');
-                    canvas.width = 640; canvas.height = 360;
+                    
+                    // Tính toán kích thước giữ nguyên tỷ lệ khung hình, max 640px
+                    const maxDim = 640;
+                    let w = video.videoWidth;
+                    let h = video.videoHeight;
+                    
+                    if (w > h) {
+                        if (w > maxDim) { h = h * (maxDim / w); w = maxDim; }
+                    } else {
+                        if (h > maxDim) { w = w * (maxDim / h); h = maxDim; }
+                    }
+                    
+                    // Fallback an toàn nếu ko lấy được videoWidth
+                    canvas.width = w || 640;
+                    canvas.height = h || 360;
+                    
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
                     
                     const fd = new FormData();
                     fd.append('file', v.name);
