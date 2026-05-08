@@ -29,7 +29,7 @@ jobs:
             | sort \
             | xargs -I{} php -l {}
 
-  # ─── CD: Deploy lên Termux qua Cloudflare Tunnel ────────────────────
+  # ─── CD: Deploy lên Termux qua Cloudflare Tunnel + Service Token ─────
   deploy:
     name: Deploy to Termux
     needs: lint
@@ -52,17 +52,20 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-      - name: Deploy via cloudflared SSH tunnel
+      - name: Deploy via cloudflared SSH (Service Token auth)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           APP_PATH: ${{ secrets.APP_PATH }}
+          # Cloudflare Service Token — picked up automatically by cloudflared
+          CF_Access_Client_Id: ${{ secrets.CF_CLIENT_ID }}
+          CF_Access_Client_Secret: ${{ secrets.CF_CLIENT_SECRET }}
         run: |
           ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
-            -o ProxyCommand="cloudflared access tcp --hostname ${SSH_HOST}" \
-            ${SSH_USER}@localhost << 'ENDSSH'
+            -o "ProxyCommand=cloudflared access ssh --hostname ${SSH_HOST}" \
+            ${SSH_USER}@${SSH_HOST} << 'ENDSSH'
           set -e
 
           cd "$APP_PATH"
