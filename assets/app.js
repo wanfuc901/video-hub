@@ -792,16 +792,28 @@ if (document.getElementById('videoGrid')) {
   if (dmCancel) dmCancel.onclick = () => { const d = document.getElementById('deleteManyDialog'); if (d) d.style.display = 'none'; };
 
   function generateMissingThumbnails() {
-    const missing = allVideos.filter(v => !v.thumbnail_exists).slice(0, 5);
+    const missing = allVideos.filter(v => !v.thumbnail_exists && !v._thumbQueued);
     if (!missing.length) return;
-    missing.forEach((v, idx) => {
+    const batch = missing.slice(0, 5);
+    batch.forEach(v => { v._thumbQueued = true; });
+    let done = 0;
+    const onDone = () => { if (++done === batch.length) setTimeout(generateMissingThumbnails, 1500); };
+    batch.forEach((v, idx) => {
       setTimeout(() => {
         const video = document.createElement('video');
         video.crossOrigin = 'anonymous'; video.muted = true; video.playsInline = true; video.preload = 'auto';
         video.style.cssText = 'position:fixed;opacity:0;pointer-events:none;top:-9999px;width:160px;height:90px;';
         document.body.appendChild(video);
         let captured = false;
-        const cleanup = () => { try { video.pause(); video.src = ''; video.parentNode?.removeChild(video); } catch (e) { } };
+        let cleanedUp = false;
+        const tid = setTimeout(() => { if (!captured) cleanup(); }, 18000);
+        const cleanup = () => {
+          if (cleanedUp) return;
+          cleanedUp = true;
+          clearTimeout(tid);
+          try { video.pause(); video.src = ''; video.parentNode?.removeChild(video); } catch (e) { }
+          onDone();
+        };
         const captureFrame = () => {
           if (captured || video.videoWidth === 0) return;
           try {
@@ -826,6 +838,8 @@ if (document.getElementById('videoGrid')) {
                   img.src = baseSrc + '&t=' + Date.now();
                   img.removeAttribute('data-src');
                   wrapper.classList.remove('thumb-loading');
+                  const noThumbDiv = wrapper.querySelector('div');
+                  if (noThumbDiv) noThumbDiv.remove();
                 }
               }
               cleanup();
