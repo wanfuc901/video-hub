@@ -33,6 +33,10 @@ function escHtml(s) {
   return s ? s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') : '';
 }
 function fmtSize(b) { return formatBytes(b); }
+function debounce(fn, ms) {
+  let t;
+  return function (...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
+}
 
 // ── LOCAL STORAGE KEYS ────────────────────────────────────────
 const FAV_KEY = 'vhub_favorites';
@@ -370,6 +374,63 @@ if (document.getElementById('videoGrid')) {
   let isSelectingMode = false;
   let selectedFiles = new Set();
 
+  // ── THUMBNAIL LAZY-LOAD ─────────────────────────────────
+  const thumbCache = new Map(); // url → true (loaded OK this session)
+  const gridObservers = {};     // gridId → IntersectionObserver
+
+  function loadThumbImg(img, wrapper, attempt) {
+    if (attempt === undefined) attempt = 0;
+    const src = img.dataset.src;
+    if (!src) return;
+    if (thumbCache.has(src)) {
+      img.src = src;
+      img.removeAttribute('data-src');
+      wrapper.classList.remove('thumb-loading');
+      return;
+    }
+    const tmp = new Image();
+    tmp.onload = () => {
+      thumbCache.set(src, true);
+      if (img.isConnected) {
+        img.src = src;
+        img.removeAttribute('data-src');
+        wrapper.classList.remove('thumb-loading');
+      }
+    };
+    tmp.onerror = () => {
+      if (attempt < 3 && img.isConnected) {
+        setTimeout(() => loadThumbImg(img, wrapper, attempt + 1), 1000 * (attempt + 1));
+      } else if (img.isConnected) {
+        wrapper.classList.remove('thumb-loading');
+      }
+    };
+    // bust cache only on retry so the browser doesn't re-download on first attempt
+    tmp.src = attempt > 0 ? src + '&_r=' + attempt : src;
+  }
+
+  function observeThumbsInGrid(gridId) {
+    if (gridObservers[gridId]) gridObservers[gridId].disconnect();
+    const grid = document.getElementById(gridId);
+    if (!grid) return;
+    if (!('IntersectionObserver' in window)) {
+      grid.querySelectorAll('img[data-src]').forEach(img => {
+        const w = img.closest('.thumbnail-wrapper');
+        if (w) loadThumbImg(img, w);
+      });
+      return;
+    }
+    const obs = new IntersectionObserver((entries, o) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        o.unobserve(entry.target);
+        const img = entry.target.querySelector('img[data-src]');
+        if (img) loadThumbImg(img, entry.target);
+      });
+    }, { rootMargin: '300px 0px', threshold: 0 });
+    gridObservers[gridId] = obs;
+    grid.querySelectorAll('.thumbnail-wrapper.thumb-loading').forEach(w => obs.observe(w));
+  }
+
   updateFavBadge();
 
   const mobSearchBtn = document.getElementById('mobileSearchBtn');
@@ -549,8 +610,8 @@ if (document.getElementById('videoGrid')) {
         : '';
 
       card.innerHTML = `
-        <div class="thumbnail-wrapper">
-          ${thumbSrc ? `<img src="${thumbSrc}" alt="" loading="lazy">` : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#444;font-size:12px;">No thumb</div>`}
+        <div class="thumbnail-wrapper${thumbSrc ? ' thumb-loading' : ''}">
+          ${thumbSrc ? `<img data-src="${thumbSrc}" alt="">` : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#444;font-size:12px;">No thumb</div>`}
           ${isWatched ? `<div class="watched-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>` : ''}
           <div class="duration-badge mono-font">${v.ext.toUpperCase()}</div>
           <button class="fav-btn${isFav ? ' active' : ''}" data-name="${v.name}" title="${isFav ? 'Bỏ yêu thích' : 'Yêu thích'}">
@@ -619,6 +680,8 @@ if (document.getElementById('videoGrid')) {
         input.onkeydown = ek => { if (ek.key === 'Enter') save(); if (ek.key === 'Escape') renderByTab(); };
       };
     });
+
+    observeThumbsInGrid(targetId);
   }
 
   function confirmDeleteSingle(name) {
@@ -740,7 +803,19 @@ if (document.getElementById('videoGrid')) {
             captured = true;
             const fd = new FormData(); fd.append('file', v.name); fd.append('image', canvas.toDataURL('image/jpeg', 0.85));
             fetch('api.php?action=upload_thumbnail', { method: 'POST', body: fd }).then(r => r.json()).then(res => {
-              if (res.success) { v.thumbnail_exists = true; const img = document.querySelector(`.video-card[data-name="${CSS.escape(v.name)}"] .thumbnail-wrapper img`); if (img) img.src = `api.php?action=thumbnail&file=${encodeURIComponent(v.name)}&t=${Date.now()}`; else renderByTab(); }
+              if (res.success) {
+                v.thumbnail_exists = true;
+                const baseSrc = `api.php?action=thumbnail&file=${encodeURIComponent(v.name)}`;
+                thumbCache.set(baseSrc, true);
+                const wrapper = document.querySelector(`.video-card[data-name="${CSS.escape(v.name)}"] .thumbnail-wrapper`);
+                if (wrapper) {
+                  let img = wrapper.querySelector('img');
+                  if (!img) { img = document.createElement('img'); img.alt = ''; wrapper.insertBefore(img, wrapper.firstChild); }
+                  img.src = baseSrc + '&t=' + Date.now();
+                  img.removeAttribute('data-src');
+                  wrapper.classList.remove('thumb-loading');
+                }
+              }
               cleanup();
             }).catch(cleanup);
           } catch (e) { cleanup(); }

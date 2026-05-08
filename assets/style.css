@@ -237,6 +237,22 @@ main { margin-top: 64px; }
 .skeleton-card .line1 { height:15px;margin:14px 14px 6px;width:75%;border-radius:2px; }
 .skeleton-card .line2 { height:11px;margin:0 14px 14px;width:35%;border-radius:2px; }
 
+/* ── THUMBNAIL LAZY-LOAD ─────────────────────────────────── */
+.thumbnail-wrapper.thumb-loading::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #1c1c1c 0%, #2c2c2c 50%, #1c1c1c 100%);
+  background-size: 200% 100%;
+  animation: thumbShimmer 1.5s ease-in-out infinite;
+  z-index: 1;
+  pointer-events: none;
+}
+@keyframes thumbShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* ── FAV BADGE ───────────────────────────────────────────── */
 .fav-count-badge { position:absolute;top:-5px;right:-5px;background:var(--error);color:white;font-size:10px;font-weight:700;padding:2px 5px;border-radius:10px;line-height:1;pointer-events:none; }
 
