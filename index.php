@@ -1,3 +1,4 @@
+<?php require __DIR__ . '/auth.php'; ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -52,12 +53,12 @@
         <span class="close-btn" id="closeUploadBtn" style="position:static;font-size:24px;cursor:pointer;">&times;</span>
       </div>
     </div>
-    <div id="uploadDropZone" class="drop-zone">
+    <label for="videoFileInput" id="uploadDropZone" class="drop-zone" style="display:block;cursor:pointer;">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" style="margin-bottom:12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       <div style="font-weight:600;margin-bottom:6px;">Kéo thả video vào đây</div>
       <div style="font-size:13px;color:var(--text-gray);">hoặc <label for="videoFileInput" style="color:var(--accent);text-decoration:underline;cursor:pointer;" id="uploadBrowseLink">chọn file</label> · MP4, MKV, AVI, MOV, WEBM</div>
       <input type="file" id="videoFileInput" accept="video/mp4,video/x-matroska,video/x-msvideo,video/quicktime,video/webm,video/x-m4v,video/*" multiple style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;">
-    </div>
+    </label>
     <!-- Options -->
     <div id="uploadOptions" style="display:none;margin-bottom:12px;padding:12px;background:var(--brand-50);border:1px solid var(--border);">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--brand-900);">Tùy chọn khi file tồn tại:</div>

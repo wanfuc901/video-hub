@@ -1,6 +1,10 @@
 <?php
 // config.php — auto-detect environment
 
+if (!defined('VHHUB_PASSWORD')) {
+    define('VHHUB_PASSWORD', 'changeme');
+}
+
 // Upload dir: luôn dùng videos/ trong project (writable)
 $uploadDir = __DIR__ . '/videos';
 if (!is_dir($uploadDir)) @mkdir($uploadDir, 0777, true);

@@ -1,4 +1,5 @@
 <?php
+require __DIR__ . '/auth.php';
 header('Content-Type: application/json');
 $config = require 'config.php';
 $videoDir      = $config['video_dir'];

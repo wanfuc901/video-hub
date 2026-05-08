@@ -1,4 +1,5 @@
 <?php
+require __DIR__ . '/auth.php';
 $path = $_GET['path'] ?? '';
 $filename = basename($path);
 if (empty($path)) die("No video specified.");

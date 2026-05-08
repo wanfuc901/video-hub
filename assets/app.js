@@ -149,9 +149,7 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
     dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); addFiles(Array.from(e.dataTransfer.files)); });
-    dropZone.addEventListener('click', e => { if (e.target !== browseLink && fileInput) fileInput.click(); });
   }
-  // label[for=videoFileInput] activates the file picker natively on iOS Safari — no JS needed
   if (browseLink) browseLink.addEventListener('click', e => e.stopPropagation());
   if (fileInput) fileInput.addEventListener('change', () => { addFiles(Array.from(fileInput.files)); fileInput.value = ''; });
 
