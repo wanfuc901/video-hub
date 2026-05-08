@@ -32,50 +32,82 @@ const FAV_KEY = 'vhub_favorites';
 const HIST_KEY = 'vhub_history';
 
 function getFavs() { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); }
-function setFavs(favs) { localStorage.setItem(FAV_KEY, JSON.stringify(favs)); }
+function setFavs(favs) { localStorage.setItem(FAV_KEY, JSON.stringify(favs)); updateFavBadge(); }
 function toggleFav(filename) {
     let favs = getFavs();
-    if(favs.includes(filename)) { favs = favs.filter(f => f !== filename); showToast('Đã bỏ yêu thích', 'info'); }
+    if(favs.includes(filename)) { favs = favs.filter(f => f !== filename); showToast('Đã xóa khỏi yêu thích', 'info'); }
     else { favs.push(filename); showToast('Đã thêm vào yêu thích', 'success'); }
     setFavs(favs);
     return favs.includes(filename);
 }
+function updateFavBadge() {
+    const badge = document.getElementById('favCount');
+    if(badge) badge.textContent = getFavs().length;
+}
 
 function getHistory() { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); }
-function addToHistory(filename, path) {
+function addToHistory(filename, path, title) {
     let hist = getHistory();
-    hist = hist.filter(h => h.name !== filename); // remove existing
-    hist.unshift({ name: filename, path: path, time: Date.now() }); // add to top
-    if(hist.length > 50) hist = hist.slice(0, 50); // limit 50
+    hist = hist.filter(h => h.name !== filename);
+    hist.unshift({ name: filename, path: path, title: title, time: Date.now() });
+    if(hist.length > 50) hist = hist.slice(0, 50);
     localStorage.setItem(HIST_KEY, JSON.stringify(hist));
+}
+function getProgress(path) {
+    const p = localStorage.getItem('video_progress_' + path);
+    if (!p) return null;
+    try {
+        const parts = p.split('|');
+        if(parts.length === 2) return { currentTime: parseFloat(parts[0]), duration: parseFloat(parts[1]) };
+        return { currentTime: parseFloat(p), duration: 0 };
+    } catch(e) { return null; }
 }
 
 // ---- INDEX.PHP LOGIC ----
 if (document.getElementById('videoGrid')) {
     let allVideos = [];
     let currentTab = 'all';
+    
+    updateFavBadge();
 
-    // Header scroll
+    // Mobile search toggle
+    const mobSearchBtn = document.getElementById('mobileSearchBtn');
+    const searchBarContainer = document.getElementById('searchBarContainer');
+    if (mobSearchBtn) {
+        mobSearchBtn.addEventListener('click', () => {
+            searchBarContainer.classList.toggle('active');
+            if(searchBarContainer.classList.contains('active')) document.getElementById('searchInput').focus();
+        });
+    }
+
     window.addEventListener('scroll', () => {
         if(window.scrollY > 10) document.getElementById('mainHeader').classList.add('scrolled');
         else document.getElementById('mainHeader').classList.remove('scrolled');
     });
 
+    function renderSkeleton() {
+        const grid = document.getElementById('videoGrid');
+        grid.style.display = 'grid';
+        document.getElementById('emptyState').style.display = 'none';
+        grid.innerHTML = '';
+        for(let i=0; i<8; i++) {
+            grid.innerHTML += `<div class="skeleton-card skeleton"><div class="thumb skeleton"></div><div class="line1 skeleton"></div><div class="line2 skeleton"></div></div>`;
+        }
+    }
+
     function loadVideos() {
-        showLoader();
+        renderSkeleton();
         fetch('api.php?action=list')
             .then(r => r.json())
             .then(data => {
-                hideLoader();
                 if(data.error) { showToast(data.error, 'error'); return; }
                 allVideos = data;
                 renderByTab();
                 generateMissingThumbnails();
-            }).catch(e => { hideLoader(); showToast('Error loading videos', 'error'); });
+            }).catch(e => { showToast('Error loading videos', 'error'); });
     }
     loadVideos();
 
-    // Tabs
     const tabs = document.querySelectorAll('.tab');
     tabs.forEach(t => {
         t.addEventListener('click', () => {
@@ -87,11 +119,9 @@ if (document.getElementById('videoGrid')) {
         });
     });
 
-    // Special header buttons
     document.getElementById('tabFavBtn').addEventListener('click', () => { document.querySelector('[data-tab="favorites"]').click(); });
     document.getElementById('tabHistoryBtn').addEventListener('click', () => { document.querySelector('[data-tab="history"]').click(); });
 
-    // Search
     document.getElementById('searchInput').addEventListener('input', (e) => {
         const term = e.target.value.toLowerCase();
         let filtered = getFilteredVideos(currentTab);
@@ -99,7 +129,7 @@ if (document.getElementById('videoGrid')) {
             (v.title_custom || v.name).toLowerCase().includes(term) || 
             v.name.toLowerCase().includes(term)
         );
-        renderGrid(filtered);
+        renderGrid(filtered, 'videoGrid');
     });
 
     document.getElementById('sortSelect').addEventListener('change', () => {
@@ -121,7 +151,10 @@ if (document.getElementById('videoGrid')) {
             });
         }
         else if (tab === 'suggest') {
-            filtered = [...allVideos].sort(() => 0.5 - Math.random()).slice(0, 8);
+            filtered = allVideos.filter(v => {
+                const prog = getProgress(v.path);
+                return !prog || prog.currentTime < 10;
+            }).sort(() => 0.5 - Math.random()).slice(0, 8);
         }
 
         if (tab === 'all' || tab === 'favorites') {
@@ -141,14 +174,45 @@ if (document.getElementById('videoGrid')) {
         return filtered;
     }
 
-    function renderByTab() { renderGrid(getFilteredVideos(currentTab)); }
+    function renderByTab() { 
+        renderGrid(getFilteredVideos(currentTab), 'videoGrid'); 
+        
+        const cwSec = document.getElementById('continueWatchingSection');
+        if(currentTab === 'all' && !document.getElementById('searchInput').value) {
+            let cwVids = allVideos.filter(v => {
+                const prog = getProgress(v.path);
+                if(prog && prog.duration > 0) {
+                    const pct = (prog.currentTime / prog.duration) * 100;
+                    return pct >= 10 && pct <= 90;
+                }
+                return false;
+            });
+            // Sort by history time
+            const hist = getHistory();
+            cwVids.sort((a, b) => {
+                const ha = hist.find(h => h.name === a.name);
+                const hb = hist.find(h => h.name === b.name);
+                return (hb ? hb.time : 0) - (ha ? ha.time : 0);
+            });
+            cwVids = cwVids.slice(0, 4);
+            
+            if(cwVids.length > 0) {
+                cwSec.style.display = 'block';
+                renderGrid(cwVids, 'continueWatchingGrid', true);
+            } else {
+                cwSec.style.display = 'none';
+            }
+        } else {
+            cwSec.style.display = 'none';
+        }
+    }
 
-    function renderGrid(videos) {
-        const grid = document.getElementById('videoGrid');
+    function renderGrid(videos, targetId, isCompact = false) {
+        const grid = document.getElementById(targetId);
         const empty = document.getElementById('emptyState');
         grid.innerHTML = '';
-        if(videos.length === 0) { grid.style.display = 'none'; empty.style.display = 'block'; return; }
-        grid.style.display = 'grid'; empty.style.display = 'none';
+        if(videos.length === 0 && targetId === 'videoGrid') { grid.style.display = 'none'; empty.style.display = 'block'; return; }
+        if(targetId === 'videoGrid') { grid.style.display = 'grid'; empty.style.display = 'none'; }
 
         const favs = getFavs();
 
@@ -156,23 +220,29 @@ if (document.getElementById('videoGrid')) {
             const isFav = favs.includes(v.name);
             const card = document.createElement('div');
             card.className = 'video-card';
-            // Scroll reveal basic
             card.style.opacity = '0';
             card.style.animation = `slideIn 0.4s ease forwards ${index * 0.05}s`;
 
             const displayName = v.title_custom || v.name;
             const thumbUrl = v.thumbnail_exists ? `api.php?action=thumbnail&file=${encodeURIComponent(v.name)}` : '';
-            const progress = localStorage.getItem('video_progress_' + v.path);
+            const prog = getProgress(v.path);
+            let pct = 0;
+            let isWatched = false;
+            if(prog && prog.duration > 0) {
+                pct = (prog.currentTime / prog.duration) * 100;
+                if(pct > 90) isWatched = true;
+            }
 
             card.innerHTML = `
                 <div class="thumbnail-wrapper" onclick="window.location.href='player.php?path=${encodeURIComponent(v.path)}'">
-                    ${thumbUrl ? `<img src="${thumbUrl}" alt="Thumb">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#e0e0e0;color:#999;position:absolute;top:0;width:100%;">No Thumb</div>`}
+                    ${thumbUrl ? `<img src="${thumbUrl}" alt="Thumb">` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#111;color:#666;position:absolute;top:0;width:100%;">No Thumb</div>`}
+                    ${isWatched ? `<div class="watched-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>` : ''}
                     <div class="duration-badge mono-font">${v.ext.toUpperCase()}</div>
                     <button class="fav-btn ${isFav ? 'active' : ''}" data-name="${v.name}" onclick="event.stopPropagation();">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                     </button>
                 </div>
-                ${progress ? `<div class="progress-bar-container"><div class="progress-bar" style="width:50%"></div></div>` : ''}
+                ${pct > 0 ? `<div class="progress-bar-container"><div class="progress-bar" style="width:${pct}%"></div></div>` : ''}
                 <div class="card-info">
                     <div class="video-title" data-name="${v.name}" style="display:flex; justify-content:space-between; align-items:flex-start;">
                         <span style="flex:1; padding-right:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;" title="${displayName}">${displayName}</span>
@@ -186,7 +256,6 @@ if (document.getElementById('videoGrid')) {
 
             grid.appendChild(card);
 
-            // Title inline edit
             const titleEl = card.querySelector('.video-title');
             const editBtn = titleEl.querySelector('.edit-title-btn-small');
             editBtn.addEventListener('click', (e) => {
@@ -211,21 +280,19 @@ if (document.getElementById('videoGrid')) {
                     }
                 };
                 input.addEventListener('blur', save);
-                input.addEventListener('keydown', (ek) => { if(ek.key === 'Enter') save(); });
+                input.addEventListener('keydown', (ek) => { if(ek.key === 'Enter') save(); if(ek.key === 'Escape') renderByTab(); });
             });
 
-            // Fav btn
             card.querySelector('.fav-btn').addEventListener('click', (e) => {
                 const isNowFav = toggleFav(v.name);
                 const svg = e.currentTarget.querySelector('svg');
                 if(isNowFav) { e.currentTarget.classList.add('active'); svg.setAttribute('fill', 'currentColor'); }
                 else { e.currentTarget.classList.remove('active'); svg.setAttribute('fill', 'none'); }
-                if(currentTab === 'favorites') renderByTab(); // remove instantly if on fav tab
+                if(currentTab === 'favorites') renderByTab();
             });
         });
     }
 
-    // Auto generate thumbnails via hidden canvas
     function generateMissingThumbnails() {
         const missing = allVideos.filter(v => !v.thumbnail_exists).slice(0, 3);
         if(missing.length === 0) return;
@@ -233,7 +300,7 @@ if (document.getElementById('videoGrid')) {
         missing.forEach(v => {
             const video = document.createElement('video');
             video.src = `api.php?action=stream&path=${encodeURIComponent(v.path)}`;
-            video.preload = 'auto'; // Force load on iOS
+            video.preload = 'auto'; 
             video.muted = true;
             video.playsInline = true;
             video.setAttribute('webkit-playsinline', 'true');
@@ -249,8 +316,6 @@ if (document.getElementById('videoGrid')) {
             video.addEventListener('seeked', () => {
                 try {
                     const canvas = document.createElement('canvas');
-                    
-                    // Tính toán kích thước giữ nguyên tỷ lệ khung hình, max 640px
                     const maxDim = 640;
                     let w = video.videoWidth;
                     let h = video.videoHeight;
@@ -261,7 +326,6 @@ if (document.getElementById('videoGrid')) {
                         if (h > maxDim) { w = w * (maxDim / h); h = maxDim; }
                     }
                     
-                    // Fallback an toàn nếu ko lấy được videoWidth
                     canvas.width = w || 640;
                     canvas.height = h || 360;
                     
@@ -283,13 +347,10 @@ if (document.getElementById('videoGrid')) {
                 } catch(e) { cleanup(); }
             });
             video.addEventListener('error', cleanup);
-            
-            // Trigger load for iOS
             video.load();
         });
     }
 
-    // Upload Logic
     const uploadModal = document.getElementById('uploadModal');
     if (document.getElementById('openUploadBtn')) {
         document.getElementById('openUploadBtn').addEventListener('click', () => {
@@ -360,19 +421,18 @@ if (document.getElementById('videoPlayer')) {
 
     let isSeeking = false;
     let hideControlsTimeout;
+    
+    // Save history
+    addToHistory(CURRENT_FILE, CURRENT_PATH, document.getElementById('titleText').textContent);
 
-    // History
-    if(typeof CURRENT_FILE !== 'undefined') addToHistory(CURRENT_FILE, CURRENT_PATH);
-
-    // Load Title
     fetch('api.php?action=list').then(r=>r.json()).then(data => {
         const vid = data.find(v => v.name === CURRENT_FILE);
         if(vid && vid.title_custom) {
             document.getElementById('titleText').textContent = vid.title_custom;
             document.title = "Playing: " + vid.title_custom;
+            addToHistory(CURRENT_FILE, CURRENT_PATH, vid.title_custom);
         }
 
-        // Render Sidebar suggests
         const sidebar = document.getElementById('sidebarSuggests');
         const suggests = data.filter(v => v.name !== CURRENT_FILE).sort(() => 0.5 - Math.random()).slice(0, 10);
         suggests.forEach(v => {
@@ -381,7 +441,7 @@ if (document.getElementById('videoPlayer')) {
             item.href = `player.php?path=${encodeURIComponent(v.path)}`;
             const thumbUrl = v.thumbnail_exists ? `api.php?action=thumbnail&file=${encodeURIComponent(v.name)}` : '';
             item.innerHTML = `
-                <div class="thumb">${thumbUrl ? `<img src="${thumbUrl}">` : `<div style="background:#333;width:100%;height:100%;"></div>`}</div>
+                <div class="thumb">${thumbUrl ? `<img src="${thumbUrl}">` : `<div style="background:#111;width:100%;height:100%;"></div>`}</div>
                 <div class="info">
                     <div class="title">${v.title_custom || v.name}</div>
                     <div class="meta">${formatBytes(v.size)} • ${v.ext.toUpperCase()}</div>
@@ -391,30 +451,19 @@ if (document.getElementById('videoPlayer')) {
         });
     });
 
-    // Edit Title
     document.getElementById('editTitleBtn').addEventListener('click', () => {
         const titleText = document.getElementById('titleText');
         const current = titleText.textContent;
-        const input = document.createElement('input');
-        input.type = 'text'; input.value = current;
-        input.style.cssText = "background:transparent; border:none; border-bottom:1px solid var(--accent); color:white; font-size:20px; font-family:'Syne'; outline:none; width:300px;";
-        titleText.replaceWith(input);
-        input.focus();
-        const save = () => {
-            const newVal = input.value.trim();
-            if(newVal && newVal !== current) {
-                fetch('api.php?action=update_title', {
-                    method:'POST', body: JSON.stringify({file:CURRENT_FILE, title:newVal}), headers:{'Content-Type':'application/json'}
-                }).then(r=>r.json()).then(res => {
-                    if(res.success) { showToast('Đã lưu tên'); titleText.textContent = newVal; input.replaceWith(titleText); }
-                });
-            } else { input.replaceWith(titleText); }
-        };
-        input.addEventListener('blur', save);
-        input.addEventListener('keydown', e => { if(e.key==='Enter') save(); });
+        const newVal = prompt("Sửa tên video:", current);
+        if(newVal && newVal.trim() !== current) {
+            fetch('api.php?action=update_title', {
+                method:'POST', body: JSON.stringify({file:CURRENT_FILE, title:newVal.trim()}), headers:{'Content-Type':'application/json'}
+            }).then(r=>r.json()).then(res => {
+                if(res.success) { showToast('Đã lưu tên'); titleText.textContent = newVal.trim(); }
+            });
+        }
     });
 
-    // Fav Toggle
     const favBtn = document.getElementById('playerFavBtn');
     const isFav = getFavs().includes(CURRENT_FILE);
     if(isFav) { favBtn.style.color = 'var(--accent)'; favBtn.querySelector('svg').setAttribute('fill', 'currentColor'); }
@@ -424,7 +473,6 @@ if (document.getElementById('videoPlayer')) {
         else { favBtn.style.color = 'white'; favBtn.querySelector('svg').setAttribute('fill', 'none'); }
     });
 
-    // Player Core Logic
     const playIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
     const pauseIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
 
@@ -445,12 +493,10 @@ if (document.getElementById('videoPlayer')) {
 
     video.addEventListener('loadedmetadata', () => {
         durationDisplay.textContent = formatTime(video.duration);
-        // Resume progress
-        const progKey = 'video_progress_' + CURRENT_PATH;
-        const saved = localStorage.getItem(progKey);
-        if(saved && parseFloat(saved) > 0 && parseFloat(saved) < video.duration - 5) {
-            video.currentTime = parseFloat(saved);
-            showToast(`Đã tiếp tục từ ${formatTime(video.currentTime)}`, 'info');
+        const prog = getProgress(CURRENT_PATH);
+        if(prog && prog.currentTime > 0 && prog.currentTime < video.duration - 5) {
+            video.currentTime = prog.currentTime;
+            showToast(`Tiếp tục từ ${formatTime(video.currentTime)}`, 'info');
         }
     });
 
@@ -474,7 +520,6 @@ if (document.getElementById('videoPlayer')) {
         document.removeEventListener('mouseup', stopSeek);
     }
 
-    // Volume
     volumeSlider.addEventListener('input', (e) => {
         video.volume = e.target.value;
         video.muted = video.volume === 0;
@@ -491,7 +536,6 @@ if (document.getElementById('videoPlayer')) {
         else muteBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
     }
 
-    // Speed
     const speeds = [0.5, 1, 1.25, 1.5, 2];
     let speedIdx = 1;
     speedBtn.addEventListener('click', () => {
@@ -500,26 +544,22 @@ if (document.getElementById('videoPlayer')) {
         speedBtn.textContent = speeds[speedIdx] + 'x';
     });
 
-    // PIP
     pipBtn.addEventListener('click', async () => {
         try { if(document.pictureInPictureElement) await document.exitPictureInPicture(); else await video.requestPictureInPicture(); } catch(e) { showToast('PIP not supported', 'error'); }
     });
 
-    // Fullscreen
     fullscreenBtn.addEventListener('click', () => {
         if (!document.fullscreenElement) playerWrapper.requestFullscreen().catch(err => {});
         else document.exitFullscreen();
     });
 
-    // Save Progress every 5s
     setInterval(() => {
         if(!video.paused && video.currentTime > 0) {
-            localStorage.setItem('video_progress_' + CURRENT_PATH, video.currentTime);
+            localStorage.setItem('video_progress_' + CURRENT_PATH, video.currentTime + '|' + video.duration);
         }
     }, 5000);
     video.addEventListener('ended', () => localStorage.removeItem('video_progress_' + CURRENT_PATH));
 
-    // Auto hide controls
     function resetHideControls() {
         playerControls.classList.add('active');
         clearTimeout(hideControlsTimeout);

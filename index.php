@@ -16,14 +16,18 @@
             <span class="syne-font">VH<span style="color:var(--brand-900)">Hub</span></span>
         </a>
         <div class="header-controls">
-            <div class="search-bar">
+            <button class="mobile-search-toggle" id="mobileSearchBtn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </button>
+            <div class="search-bar" id="searchBarContainer">
                 <input type="text" id="searchInput" placeholder="Search videos...">
             </div>
             <button class="btn btn-ghost" id="tabHistoryBtn" title="Lịch sử">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </button>
-            <button class="btn btn-ghost" id="tabFavBtn" title="Yêu thích">
+            <button class="btn btn-ghost" id="tabFavBtn" title="Yêu thích" style="position: relative;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                <span class="fav-count-badge" id="favCount">0</span>
             </button>
             <button class="btn btn-accent" id="openUploadBtn">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -74,6 +78,14 @@
                     <option value="smallest">Dung lượng (Nhỏ nhất)</option>
                 </select>
             </div>
+        </div>
+
+        <div id="continueWatchingSection" style="display: none; margin-bottom: 32px;">
+            <h2 class="syne-font" style="font-size: 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M12 6v6l4 2"/></svg>
+                Tiếp tục xem
+            </h2>
+            <div class="video-grid" id="continueWatchingGrid"></div>
         </div>
 
         <div class="video-grid" id="videoGrid">

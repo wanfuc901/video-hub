@@ -45,7 +45,7 @@ if ($action === 'list') {
                 $filename = $file->getFilename();
                 $path = $file->getPathname();
                 $customTitle = $titles[$filename] ?? null;
-                $thumbPath = $thumbDir . DIRECTORY_SEPARATOR . $filename . '.jpg';
+                $thumbPath = $thumbDir . DIRECTORY_SEPARATOR . md5($filename) . '.jpg';
                 
                 $videos[] = [
                     'name' => $filename,
@@ -60,7 +60,6 @@ if ($action === 'list') {
         }
     }
 
-    // Sort by modified time (newest first)
     usort($videos, function($a, $b) {
         return $b['mtime'] <=> $a['mtime'];
     });
@@ -73,6 +72,12 @@ if ($action === 'upload') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405); exit;
     }
+    
+    set_time_limit(0);
+    ini_set('memory_limit', '10240M');
+    ini_set('post_max_size', '10240M');
+    ini_set('upload_max_filesize', '10240M');
+
     if (!isset($_FILES['video']) || $_FILES['video']['error'] !== UPLOAD_ERR_OK) {
         http_response_code(400);
         echo json_encode(['error' => 'Upload error: ' . ($_FILES['video']['error'] ?? 'Unknown')]);
@@ -123,7 +128,7 @@ if ($action === 'upload_thumbnail') {
         list($type, $imageData) = explode(';', $imageData);
         list(, $imageData)      = explode(',', $imageData);
         $imageData = base64_decode($imageData);
-        $thumbPath = $thumbDir . DIRECTORY_SEPARATOR . basename($file) . '.jpg';
+        $thumbPath = $thumbDir . DIRECTORY_SEPARATOR . md5($file) . '.jpg';
         file_put_contents($thumbPath, $imageData);
         echo json_encode(['success' => true]);
     } else {
@@ -134,12 +139,34 @@ if ($action === 'upload_thumbnail') {
 
 if ($action === 'thumbnail') {
     $file = $_GET['file'] ?? '';
-    $thumbPath = $thumbDir . DIRECTORY_SEPARATOR . basename($file) . '.jpg';
+    $thumbPath = $thumbDir . DIRECTORY_SEPARATOR . md5($file) . '.jpg';
     if (file_exists($thumbPath)) {
         header('Content-Type: image/jpeg');
         readfile($thumbPath);
     } else {
         http_response_code(404);
+    }
+    exit;
+}
+
+if ($action === 'delete') {
+    $data = json_decode(file_get_contents('php://input'), true);
+    $file = $data['file'] ?? '';
+    if ($file) {
+        $targetPath = $videoDir . DIRECTORY_SEPARATOR . basename($file);
+        $thumbPath = $thumbDir . DIRECTORY_SEPARATOR . md5($file) . '.jpg';
+        
+        if (file_exists($targetPath)) @unlink($targetPath);
+        if (file_exists($thumbPath)) @unlink($thumbPath);
+        
+        $titles = getTitles();
+        if (isset($titles[$file])) {
+            unset($titles[$file]);
+            saveTitles($titles);
+        }
+        echo json_encode(['success' => true]);
+    } else {
+        http_response_code(400); echo json_encode(['error' => 'Invalid file']);
     }
     exit;
 }
