@@ -130,10 +130,11 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     isCanceled = true;
     activeXhrs.forEach(xhr => xhr.abort());
     activeXhrs.clear();
-    queue.forEach(item => { if (['uploading', 'pending', 'checking'].includes(item.status)) item.status = 'error'; });
+    // Only mark uploading items as error, keep pending as pending for restart
+    queue.forEach(item => { if (['uploading', 'checking'].includes(item.status)) item.status = 'error'; });
     running = 0;
     renderQueue();
-    showToast('Đã dừng tất cả tải lên', 'warning');
+    showToast('Đã dừng tải lên', 'warning');
     if (stopBtn) stopBtn.style.display = 'none';
     if (clearBtn) clearBtn.style.display = 'block';
   }
@@ -189,7 +190,7 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     `).join('');
     const total = queue.length, done = queue.filter(q => q.status === 'done').length, err = queue.filter(q => q.status === 'error').length;
     summaryEl.textContent = running > 0 ? `Đang upload... ${done}/${total} hoàn thành` :
-      `${total} file · ${fmtSize(queue.reduce((s, q) => s + q.file.size, 0))}${err > 0 ? ` · ${err} lỗi` : ''}`;
+      `${total} file · ${fmtSize(queue.reduce((s, q) => s + q.file.size, 0))}${err > 0 ? ` · ${err} lỗi`: ''}`;
   }
 
   window.removeQueueItem = function (id) { queue = queue.filter(q => q.id !== id); renderQueue(); };
@@ -199,16 +200,32 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
   if (clearBtn) clearBtn.addEventListener('click', resetQueue);
 
   async function startUploads() {
-    let pending = queue.filter(q => q.status === 'pending');
+    let pending = queue.filter(q => ['pending', 'error'].includes(q.status));
     if (!pending.length) return;
-    isCanceled = false;
+    isCanceled = false; // RESET isCanceled
     if (startBtn) startBtn.style.display = 'none'; 
     if (clearBtn) clearBtn.style.display = 'none'; 
     if (stopBtn) stopBtn.style.display = 'flex';
     pending.sort((a, b) => a.file.size - b.file.size);
     running = pending.length;
     const conflictMode = document.querySelector('input[name="conflictMode"]:checked')?.value || 'ask';
-    await uploadQueue(pending, conflictMode);
+    
+    // Robust Worker Pool for files
+    const items = [...pending];
+    const pool = [];
+    for (let i = 0; i < Math.min(MAX_PARALLEL, items.length); i++) {
+        pool.push(worker());
+    }
+    
+    async function worker() {
+        while (items.length > 0 && !isCanceled) {
+            const item = items.shift();
+            await uploadFile(item, conflictMode);
+        }
+    }
+    
+    await Promise.all(pool);
+    
     running = 0;
     const done = queue.filter(q => q.status === 'done').length;
     const err = queue.filter(q => q.status === 'error').length;
@@ -216,27 +233,7 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     if (summaryEl) summaryEl.textContent = `Hoàn tất: ${done}/${queue.length} thành công`;
     if (clearBtn) clearBtn.style.display = 'block'; 
     if (stopBtn) stopBtn.style.display = 'none';
-    if (typeof loadVideos === 'function' && done > 0) loadVideos();
-  }
-
-  async function uploadQueue(items, conflictMode) {
-    const active = new Set(); let i = 0;
-    return new Promise(resolve => {
-      function next() {
-        if (isCanceled) { resolve(); return; }
-        while (active.size < MAX_PARALLEL && i < items.length) {
-          if (isCanceled) break;
-          const item = items[i++];
-          const p = uploadFile(item, conflictMode).finally(() => {
-            active.delete(p); next();
-            if (active.size === 0 && (i >= items.length || isCanceled)) resolve();
-          });
-          active.add(p);
-        }
-        if (items.length === 0 || isCanceled) resolve();
-      }
-      next();
-    });
+    if (typeof loadVideos === 'function') loadVideos();
   }
 
   function askConflict(fileName) {
@@ -244,17 +241,25 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
       const fnEl = document.getElementById('conflictFileName');
       if (fnEl) fnEl.textContent = fileName;
       if (conflictDlg) conflictDlg.style.display = 'flex';
-      const cleanup = () => { if (conflictDlg) conflictDlg.style.display = 'none'; };
+      let resolved = false;
+      const cleanup = (val) => { 
+        if (resolved) return; resolved = true;
+        if (conflictDlg) conflictDlg.style.display = 'none'; 
+        resolve(val);
+      };
       const btnOverwrite = document.getElementById('conflictOverwrite');
       const btnKeepBoth = document.getElementById('conflictKeepBoth');
       const btnSkip = document.getElementById('conflictSkip');
-      if (btnOverwrite) btnOverwrite.onclick = () => { cleanup(); resolve('overwrite'); };
-      if (btnKeepBoth) btnKeepBoth.onclick = () => { cleanup(); resolve('keepboth'); };
-      if (btnSkip) btnSkip.onclick = () => { cleanup(); resolve('skip'); };
+      if (btnOverwrite) btnOverwrite.onclick = () => cleanup('overwrite');
+      if (btnKeepBoth) btnKeepBoth.onclick = () => cleanup('keepboth');
+      if (btnSkip) btnSkip.onclick = () => cleanup('skip');
+      // If dialog is closed without choice (Bug 7)
+      window.addEventListener('click', e => { if (e.target === conflictDlg) cleanup('skip'); }, { once: true });
     });
   }
 
   async function uploadFile(item, conflictMode) {
+    if (isCanceled) return;
     item.status = 'checking'; updateItemUI(item);
     const checkRes = await fetch(`api.php?action=check_exists&file=${encodeURIComponent(item.file.name)}`).then(r => r.json()).catch(() => ({ exists: false }));
     let overwrite = false, keepBoth = false;
@@ -262,7 +267,7 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
       if (isCanceled) return;
       let action = conflictMode;
       if (conflictMode === 'ask') action = await askConflict(item.file.name);
-      if (action === 'skip') { item.status = 'skipped'; updateItemUI(item); running--; return; }
+      if (action === 'skip') { item.status = 'skipped'; updateItemUI(item); return; }
       if (action === 'overwrite') overwrite = true;
       if (action === 'keepboth') keepBoth = true;
     }
@@ -273,55 +278,56 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     const uploadId = item.id;
     const chunkProgress = new Array(totalChunks).fill(0);
 
-    function uploadChunk(ci) {
-      if (isCanceled) return Promise.reject(new Error('Aborted'));
-      const start = ci * CHUNK_SIZE;
-      const chunk = file.slice(start, start + CHUNK_SIZE);
-      const fd = new FormData();
-      fd.append('chunk', chunk, 'chunk');
-      fd.append('fileName', file.name);
-      fd.append('chunkIndex', ci);
-      fd.append('totalChunks', totalChunks);
-      fd.append('uploadId', uploadId);
-      fd.append('overwrite', overwrite ? 'true' : 'false');
-      fd.append('keepBoth', keepBoth ? 'true' : 'false');
-      return xhrChunk('api.php?action=upload_chunk', fd, pct => {
-        chunkProgress[ci] = pct / 100;
-        const total = chunkProgress.reduce((s, p) => s + p, 0);
-        item.progress = (total / totalChunks) * 100;
-        updateItemUI(item);
-      });
+    async function uploadChunkWithRetry(ci, retryCount = 3) {
+      for (let attempt = 0; attempt <= retryCount; attempt++) {
+        if (isCanceled) throw new Error('Aborted');
+        try {
+          const start = ci * CHUNK_SIZE;
+          const chunk = file.slice(start, start + CHUNK_SIZE);
+          const fd = new FormData();
+          fd.append('chunk', chunk, 'chunk');
+          fd.append('fileName', file.name);
+          fd.append('chunkIndex', ci);
+          fd.append('totalChunks', totalChunks);
+          fd.append('uploadId', uploadId);
+          fd.append('overwrite', overwrite ? 'true' : 'false');
+          fd.append('keepBoth', keepBoth ? 'true' : 'false');
+          const res = await xhrChunk('api.php?action=upload_chunk', fd, pct => {
+            chunkProgress[ci] = pct / 100;
+            const total = chunkProgress.reduce((s, p) => s + p, 0);
+            item.progress = (total / totalChunks) * 100;
+            updateItemUI(item);
+          });
+          if (!res.success) throw new Error(res.error || 'Chunk failed');
+          return res;
+        } catch (e) {
+          if (attempt === retryCount || isCanceled) throw e;
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); // Exponential backoff
+        }
+      }
     }
 
     try {
-      const indices = Array.from({ length: totalChunks }, (_, i) => i);
-      const active = new Set();
-      let idx = 0;
-      await new Promise((resolve, reject) => {
-        function next() {
-          if (isCanceled) { reject(new Error('Aborted')); return; }
-          while (active.size < CHUNK_PARALLEL && idx < indices.length) {
-            if (isCanceled) break;
-            const ci = indices[idx++];
-            const p = uploadChunk(ci).then(res => {
-              if (!res.success) throw new Error(res.error || 'Chunk failed');
-            }).finally(() => {
-              active.delete(p);
-              if (active.size === 0 && (idx >= indices.length || isCanceled)) resolve();
-              else next();
-            });
-            p.catch(reject);
-            active.add(p);
+      const chunkIndices = Array.from({ length: totalChunks }, (_, i) => i);
+      const chunkPool = [];
+      for (let i = 0; i < Math.min(CHUNK_PARALLEL, chunkIndices.length); i++) {
+          chunkPool.push(chunkWorker());
+      }
+      
+      async function chunkWorker() {
+          while (chunkIndices.length > 0 && !isCanceled) {
+              const ci = chunkIndices.shift();
+              await uploadChunkWithRetry(ci);
           }
-          if (indices.length === 0 || isCanceled) resolve();
-        }
-        next();
-      });
+      }
+      
+      await Promise.all(chunkPool);
+      if (isCanceled) throw new Error('Aborted');
       item.status = 'done'; item.progress = 100;
     } catch (e) {
       item.status = 'error'; item.errorMsg = e.message;
     }
-    updateItemUI(item); running--; renderQueue();
+    updateItemUI(item); renderQueue();
   }
 
   function xhrChunk(url, fd, onProgress) {
@@ -343,7 +349,10 @@ function setGlobalBlur(val) { localStorage.setItem(BLUR_ALL_KEY, val); }
     const st = document.getElementById(`qi-status-${item.id}`);
     if (bar) bar.style.width = item.progress + '%';
     if (st) { st.textContent = statusLabel(item.status); st.style.cssText = statusColor(item.status); }
-    if (running > 0 && summaryEl) summaryEl.textContent = `Đang upload... ${queue.filter(q => q.status === 'done').length}/${queue.length} hoàn thành`;
+    if (summaryEl) {
+        const total = queue.length, done = queue.filter(q => q.status === 'done').length;
+        if (running > 0) summaryEl.textContent = `Đang upload... ${done}/${total} hoàn thành`;
+    }
   }
 
   function statusLabel(s) { return { pending: 'Chờ', checking: 'Kiểm tra', uploading: 'Đang up', done: 'Xong', error: 'Lỗi', skipped: 'Bỏ qua' }[s] || s; }
