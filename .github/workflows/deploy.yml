@@ -29,7 +29,7 @@ jobs:
             | sort \
             | xargs -I{} php -l {}
 
-  # ─── CD: Deploy lên Termux (chỉ khi push main, không chạy trên PR) ──
+  # ─── CD: Deploy lên Termux qua Cloudflare Tunnel ────────────────────
   deploy:
     name: Deploy to Termux
     needs: lint
@@ -37,38 +37,52 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # Termux không có systemd — restart bằng nohup thủ công
-          script: |
-            set -e
+      - name: Install cloudflared
+        run: |
+          curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
+            | sudo tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] \
+            https://pkg.cloudflare.com/cloudflared any main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflared.list
+          sudo apt-get update -qq && sudo apt-get install -y cloudflared
 
-            cd ${{ secrets.APP_PATH }}
-            git fetch origin main
-            git reset --hard origin/main
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
 
-            echo "✓ Code updated"
+      - name: Deploy via cloudflared SSH tunnel
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          APP_PATH: ${{ secrets.APP_PATH }}
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -o ProxyCommand="cloudflared access tcp --hostname ${SSH_HOST}" \
+            ${SSH_USER}@localhost << 'ENDSSH'
+          set -e
 
-            # Xoá list cache cũ để lần load đầu sau deploy build lại
-            rm -f thumbnails/_list_cache.json
+          cd "$APP_PATH"
+          git fetch origin main
+          git reset --hard origin/main
+          echo "✓ Code updated"
 
-            echo "✓ Cache cleared"
+          rm -f thumbnails/_list_cache.json
+          echo "✓ Cache cleared"
 
-            # Restart PHP server với 4 worker song song
-            pkill -f 'php.*-S 0.0.0.0:8080' || true
-            sleep 1
-            PHP_CLI_SERVER_WORKERS=4 nohup php \
-              -d upload_max_filesize=10000M \
-              -d post_max_size=10000M \
-              -d memory_limit=512M \
-              -S 0.0.0.0:8080 \
-              -t ${{ secrets.APP_PATH }} \
-              >> ~/server.log 2>&1 &
+          pkill -f 'php.*-S 0.0.0.0:8080' || true
+          sleep 1
+          PHP_CLI_SERVER_WORKERS=4 nohup php \
+            -d upload_max_filesize=10000M \
+            -d post_max_size=10000M \
+            -d memory_limit=512M \
+            -S 0.0.0.0:8080 \
+            -t "$APP_PATH" \
+            >> ~/server.log 2>&1 &
 
-            sleep 2
-            echo "✓ Server restarted with 4 workers"
+          sleep 2
+          echo "✓ Server restarted with 4 workers"
+          ENDSSH
