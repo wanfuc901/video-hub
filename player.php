@@ -9,7 +9,7 @@ if (empty($path)) die("No video specified.");
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Playing: <?= htmlspecialchars($filename) ?></title>
-    <link rel="stylesheet" href="assets/style.css">
+    <link rel="stylesheet" href="assets/style.css?v=<?= time() ?>">
 </head>
 <body class="player-page">
     <div id="toastContainer"></div>
@@ -79,6 +79,6 @@ if (empty($path)) die("No video specified.");
         const CURRENT_FILE = <?= json_encode($filename) ?>;
         const CURRENT_PATH = <?= json_encode($path) ?>;
     </script>
-    <script src="assets/app.js"></script>
+    <script src="assets/app.js?v=<?= time() ?>"></script>
 </body>
 </html>

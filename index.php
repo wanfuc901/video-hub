@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Hub</title>
-    <link rel="stylesheet" href="assets/style.css">
+    <link rel="stylesheet" href="assets/style.css?v=<?= time() ?>">
 </head>
 <body>
     <div id="pageLoader"><div class="bar"></div></div>
@@ -84,6 +84,6 @@
             <p>Không có video nào ở đây.</p>
         </div>
     </main>
-    <script src="assets/app.js"></script>
+    <script src="assets/app.js?v=<?= time() ?>"></script>
 </body>
 </html>
