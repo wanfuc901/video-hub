@@ -37,7 +37,20 @@ if ($action === 'list') {
             $fn = $file->getFilename();
             if (isset($seen[$fn])) continue; $seen[$fn] = true;
             $key = md5($fn);
-            $videos[] = ['name'=>$fn,'path'=>$file->getPathname(),'size'=>$file->getSize(),'ext'=>$ext,'title_custom'=>$titles[$fn]??null,'thumbnail_exists'=>file_exists($thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg'),'blur_exists'=>file_exists($thumbDir.DIRECTORY_SEPARATOR.$key.'_blur.jpg'),'mtime'=>$file->getMTime()];
+            
+            // HYBRID: Check for either .webp (new) or .jpg (old/client-side)
+            $hasThumb = file_exists($thumbDir.DIRECTORY_SEPARATOR.$key.'.webp') || 
+                        file_exists($thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg');
+                        
+            $videos[] = [
+                'name'=>$fn,
+                'path'=>$file->getPathname(),
+                'size'=>$file->getSize(),
+                'ext'=>$ext,
+                'title_custom'=>$titles[$fn]??null,
+                'thumbnail_exists'=>$hasThumb,
+                'mtime'=>$file->getMTime()
+            ];
         }
     }
     usort($videos, fn($a,$b) => $b['mtime'] <=> $a['mtime']);
@@ -122,50 +135,14 @@ if ($action === 'upload_thumbnail') {
     }else{http_response_code(400);echo json_encode(['error'=>'No image']);} exit;
 }
 
-if ($action === 'blur_thumbnail') {
-    $data=json_decode(file_get_contents('php://input'),true);
-    $file=$data['file']??''; $imageData=$data['image']??'';
-    if(!$file){http_response_code(400);echo json_encode(['error'=>'No file']);exit;}
-    $blurPath=$thumbDir.DIRECTORY_SEPARATOR.md5($file).'_blur.jpg';
-    if($imageData){
-        $raw=base64_decode(preg_replace('/^data:image\/\w+;base64,/','',$imageData));
-        file_put_contents($blurPath,$raw);
-        echo json_encode(['success'=>true]);
-    } else {
-        $srcPath=$thumbDir.DIRECTORY_SEPARATOR.md5($file).'.jpg';
-        if(!file_exists($srcPath)){http_response_code(404);echo json_encode(['error'=>'No thumb']);exit;}
-        $img=@imagecreatefromjpeg($srcPath);
-        if(!$img){http_response_code(500);echo json_encode(['error'=>'GD fail']);exit;}
-        for($i=0;$i<15;$i++)imagefilter($img,IMG_FILTER_GAUSSIAN_BLUR);
-        imagejpeg($img,$blurPath,80);imagedestroy($img);
-        echo json_encode(['success'=>true]);
-    }
-    exit;
-}
-
-if ($action === 'remove_blur') {
-    $data=json_decode(file_get_contents('php://input'),true); $file=$data['file']??'';
-    if($file){$p=$thumbDir.DIRECTORY_SEPARATOR.md5($file).'_blur.jpg';if(file_exists($p))@unlink($p);echo json_encode(['success'=>true]);}
-    else{http_response_code(400);echo json_encode(['error'=>'No file']);} exit;
-}
-
 if ($action === 'thumbnail') {
-    $file=$_GET['file']??''; $p=$thumbDir.DIRECTORY_SEPARATOR.md5($file).'.jpg';
+    $file=$_GET['file']??''; $key=md5($file);
+    $p = $thumbDir.DIRECTORY_SEPARATOR.$key.'.webp';
+    if (!file_exists($p)) $p = $thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg';
+    
     if(file_exists($p)){
         $etag='"'.filemtime($p).'"';
-        header('Content-Type: image/jpeg');
-        header('Cache-Control: public, max-age=604800');
-        header('ETag: '.$etag);
-        if(($_SERVER['HTTP_IF_NONE_MATCH']??'') === $etag){http_response_code(304);exit;}
-        readfile($p);
-    }else http_response_code(404); exit;
-}
-
-if ($action === 'thumbnail_blur') {
-    $file=$_GET['file']??''; $p=$thumbDir.DIRECTORY_SEPARATOR.md5($file).'_blur.jpg';
-    if(file_exists($p)){
-        $etag='"'.filemtime($p).'"';
-        header('Content-Type: image/jpeg');
+        header('Content-Type: ' . (str_ends_with($p, '.webp') ? 'image/webp' : 'image/jpeg'));
         header('Cache-Control: public, max-age=604800');
         header('ETag: '.$etag);
         if(($_SERVER['HTTP_IF_NONE_MATCH']??'') === $etag){http_response_code(304);exit;}
@@ -175,14 +152,14 @@ if ($action === 'thumbnail_blur') {
 
 if ($action === 'delete') {
     $data=json_decode(file_get_contents('php://input'),true); $file=$data['file']??'';
-    if($file){$fn=basename($file);$key=md5($fn);@unlink($videoDir.DIRECTORY_SEPARATOR.$fn);@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg');@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'_blur.jpg');$t=getTitles();unset($t[$fn]);saveTitles($t);bustListCache();echo json_encode(['success'=>true]);}
+    if($file){$fn=basename($file);$key=md5($fn);@unlink($videoDir.DIRECTORY_SEPARATOR.$fn);@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg');@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'.webp');$t=getTitles();unset($t[$fn]);saveTitles($t);bustListCache();echo json_encode(['success'=>true]);}
     else{http_response_code(400);echo json_encode(['error'=>'Invalid']);} exit;
 }
 
 if ($action === 'delete_many') {
     $data=json_decode(file_get_contents('php://input'),true); $files=$data['files']??[];
     $deleted=0;$errors=[];$t=getTitles();
-    foreach($files as $file){$fn=basename($file);if(!$fn)continue;$key=md5($fn);$tp=$videoDir.DIRECTORY_SEPARATOR.$fn;if(file_exists($tp)){@unlink($tp);@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg');@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'_blur.jpg');$deleted++;}else{$errors[]=$fn;}unset($t[$fn]);}
+    foreach($files as $file){$fn=basename($file);if(!$fn)continue;$key=md5($fn);$tp=$videoDir.DIRECTORY_SEPARATOR.$fn;if(file_exists($tp)){@unlink($tp);@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg');@unlink($thumbDir.DIRECTORY_SEPARATOR.$key.'.webp');$deleted++;}else{$errors[]=$fn;}unset($t[$fn]);}
     saveTitles($t);bustListCache();echo json_encode(['success'=>true,'deleted'=>$deleted,'errors'=>$errors]); exit;
 }
 

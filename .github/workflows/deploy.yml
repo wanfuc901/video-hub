@@ -57,10 +57,19 @@ jobs:
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
           set -e
 
+          # Install FFmpeg if missing (Termux)
+          if ! command -v ffmpeg &> /dev/null; then
+            pkg install ffmpeg -y
+          fi
+
           cd ${{ secrets.APP_PATH }}
           git fetch origin main
           git reset --hard origin/main
           echo "✓ Code updated"
+
+          # Run scanner in background to avoid timeout if there are many videos
+          nohup php scanner.php > scanner.log 2>&1 &
+          echo "✓ Scanner started in background"
 
           rm -f thumbnails/_list_cache.json
           echo "✓ Cache cleared"

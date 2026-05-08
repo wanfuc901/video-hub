@@ -653,7 +653,7 @@ if (document.getElementById('videoGrid')) {
 
       card.innerHTML = `
         <div class="thumbnail-wrapper${thumbSrc ? ' thumb-loading' : ''}">
-          ${thumbSrc ? `<img data-src="${thumbSrc}" alt="">` : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#444;font-size:12px;">No thumb</div>`}
+          ${thumbSrc ? `<img data-src="${thumbSrc}" alt="" loading="lazy">` : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#444;font-size:12px;">No thumb</div>`}
           ${isWatched ? `<div class="watched-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>` : ''}
           <div class="duration-badge mono-font">${v.ext.toUpperCase()}</div>
           <button class="fav-btn${isFav ? ' active' : ''}" data-name="${v.name}" title="${isFav ? 'Bỏ yêu thích' : 'Yêu thích'}">
