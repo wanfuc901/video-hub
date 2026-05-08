@@ -294,64 +294,67 @@ if (document.getElementById('videoGrid')) {
     }
 
     function generateMissingThumbnails() {
-        const missing = allVideos.filter(v => !v.thumbnail_exists).slice(0, 3);
-        if(missing.length === 0) return;
-
-        missing.forEach(v => {
-            const video = document.createElement('video');
-            video.src = `api.php?action=stream&path=${encodeURIComponent(v.path)}`;
-            video.preload = 'auto'; 
-            video.muted = true;
-            video.playsInline = true;
-            video.setAttribute('webkit-playsinline', 'true');
-            video.style.position = 'fixed';
-            video.style.opacity = '0';
-            video.style.pointerEvents = 'none';
-            document.body.appendChild(video);
-
-            const cleanup = () => { if(video.parentNode) video.parentNode.removeChild(video); };
-
-            video.addEventListener('loadeddata', () => {
-                video.currentTime = Math.min(3, video.duration / 2 || 1);
-            });
-
-            video.addEventListener('seeked', () => {
-                setTimeout(() => {
-                    try {
-                        const canvas = document.createElement('canvas');
-                        const maxDim = 640;
-                        let w = video.videoWidth;
-                        let h = video.videoHeight;
-                        
-                        if (w > h) {
-                            if (w > maxDim) { h = h * (maxDim / w); w = maxDim; }
-                        } else {
-                            if (h > maxDim) { w = w * (maxDim / h); h = maxDim; }
+        const missing = allVideos.filter(v => !v.thumbnail_exists).slice(0, 5);
+        if (missing.length === 0) return;
+        missing.forEach((v, idx) => {
+            setTimeout(() => {
+                const video = document.createElement('video');
+                video.crossOrigin = 'anonymous';
+                video.muted = true;
+                video.playsInline = true;
+                video.preload = 'metadata';
+                video.style.cssText = 'position:fixed;opacity:0;pointer-events:none;top:-9999px;width:1px;height:1px;';
+                document.body.appendChild(video);
+                const cleanup = () => { try { video.parentNode.removeChild(video); } catch(e){} };
+                video.addEventListener('loadedmetadata', () => {
+                    const seekTo = Math.min(video.duration * 0.1, 5);
+                    video.currentTime = seekTo > 0 ? seekTo : 1;
+                });
+                video.addEventListener('seeked', () => {
+                    setTimeout(() => {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = 640;
+                            canvas.height = 360;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(video, 0, 0, 640, 360);
+                            const pixel = ctx.getImageData(0, 0, 1, 1).data;
+                            if (pixel[0] === 0 && pixel[1] === 0 && pixel[2] === 0 && pixel[3] === 255) {
+                                video.currentTime = Math.min(video.duration * 0.3, 15);
+                                return;
+                            }
+                            canvas.toBlob(blob => {
+                                const fd = new FormData();
+                                fd.append('file', v.name);
+                                fd.append('image', canvas.toDataURL('image/jpeg', 0.85));
+                                fetch('api.php?action=upload_thumbnail', { method: 'POST', body: fd })
+                                    .then(r => r.json()).then(res => {
+                                        if (res.success) {
+                                            v.thumbnail_exists = true;
+                                            const img = document.querySelector(`[data-file="${CSS.escape(v.name)}"] .thumbnail-wrapper img`);
+                                            if (img) img.src = `api.php?action=thumbnail&file=${encodeURIComponent(v.name)}&t=${Date.now()}`;
+                                            else renderByTab();
+                                        }
+                                        cleanup();
+                                    }).catch(cleanup);
+                            }, 'image/jpeg', 0.85);
+                        } catch(e) {
+                            console.warn('Thumbnail capture failed for', v.name, e);
+                            cleanup();
                         }
-                        
-                        canvas.width = w || 640;
-                        canvas.height = h || 360;
-                        
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-                        
-                        const fd = new FormData();
-                        fd.append('file', v.name);
-                        fd.append('image', dataUrl);
-                        fetch('api.php?action=upload_thumbnail', { method: 'POST', body: fd })
-                            .then(r => r.json()).then(res => {
-                                if(res.success) {
-                                    v.thumbnail_exists = true;
-                                    renderByTab(); 
-                                }
-                                cleanup();
-                            }).catch(cleanup);
-                    } catch(e) { cleanup(); }
-                }, 100);
-            });
-            video.addEventListener('error', cleanup);
-            video.load();
+                    }, 200);
+                });
+                let seekCount = 0;
+                video.addEventListener('seeked', () => {
+                    seekCount++;
+                });
+                video.addEventListener('error', (e) => {
+                    console.warn('Video load error for thumbnail:', v.name, e);
+                    cleanup();
+                });
+                video.src = `api.php?action=stream&path=${encodeURIComponent(v.path)}`;
+                video.load();
+            }, idx * 800);
         });
     }
 

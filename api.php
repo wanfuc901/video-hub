@@ -197,6 +197,7 @@ if ($action === 'stream') {
         header('HTTP/1.1 200 OK');
     }
 
+    header('Access-Control-Allow-Origin: *');
     header("Content-Type: video/mp4"); 
     header('Cache-Control: public, must-revalidate, max-age=0');
     header('Pragma: no-cache');  
