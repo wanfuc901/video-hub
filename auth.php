@@ -92,6 +92,7 @@ $redirectUri = htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'index.php', ENT_QUOT
   </style>
 </head>
 <body>
+  <script src="assets/loader.js"></script>
   <div class="login-wrap">
     <div class="login-card">
       <div class="login-logo">
