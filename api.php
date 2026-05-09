@@ -1,6 +1,5 @@
 <?php
 require __DIR__ . '/auth.php';
-header('Content-Type: application/json');
 $config = require 'config.php';
 $videoDir      = $config['video_dir'];
 $scanDirs      = $config['scan_dirs'] ?? [$videoDir];
@@ -20,15 +19,26 @@ function saveTitles($t) { global $titlesFile; file_put_contents($titlesFile, jso
 function bustListCache() { global $cacheFile; @unlink($cacheFile); }
 
 if ($action === 'list') {
-    // 1. Ưu tiên đọc cache để tốc độ cực nhanh
+    header('Content-Type: application/json');
+    
     if (file_exists($cacheFile)) {
-        header('Content-Type: application/json');
-        header('Cache-Control: public, max-age=15'); // Cho phép trình duyệt cache 15s để quay lại mượt
+        $etag = md5(filemtime($cacheFile) . filesize($cacheFile));
+        header("ETag: \"$etag\"");
+        header('Cache-Control: public, max-age=5');
+
+        if (isset($_SERVER['HTTP_IF_NONE_MATCH']) && trim($_SERVER['HTTP_IF_NONE_MATCH'], '"') === $etag) {
+            http_response_code(304);
+            exit;
+        }
+
+        if (extension_loaded('zlib') && !ini_get('zlib.output_compression')) {
+            ob_start('ob_gzhandler');
+        }
         readfile($cacheFile);
         exit;
     }
 
-    // 2. FALLBACK: Nếu chưa có cache, thực hiện quét đĩa bình thường (đảm bảo không lỗi)
+    // FALLBACK
     $titles = getTitles(); $videos = []; $seen = [];
     foreach ($scanDirs as $dir) {
         if (!is_dir($dir)) continue;
@@ -51,15 +61,17 @@ if ($action === 'list') {
     }
     usort($videos, fn($a,$b) => $b['mtime'] <=> $a['mtime']);
     $json = json_encode($videos);
-    
-    // Lưu lại cache cho lần sau nhanh hơn
     file_put_contents($cacheFile, $json);
     
+    if (extension_loaded('zlib') && !ini_get('zlib.output_compression')) {
+        ob_start('ob_gzhandler');
+    }
     echo $json;
     exit;
 }
 
 if ($action === 'check_exists') {
+    header('Content-Type: application/json');
     $fn=basename($_GET['file']??'');
     echo json_encode(['exists'=>file_exists($videoDir.DIRECTORY_SEPARATOR.$fn)]); exit;
 }

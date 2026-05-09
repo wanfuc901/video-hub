@@ -516,17 +516,21 @@ if (document.getElementById('videoGrid')) {
   const LIST_CACHE_KEY = 'vhhub_list_v1';
 
   function loadVideos(bypassCache) {
-    if (!bypassCache) {
-      const raw = sessionStorage.getItem(LIST_CACHE_KEY);
-      if (raw) {
-        try {
-          allVideos = JSON.parse(raw);
-          renderByTab();
-          // revalidate in background — update silently if data changed
-          fetch('api.php?action=list')
-            .then(r => r.json())
-            .then(data => {
-              if (data.error) return;
+    const raw = sessionStorage.getItem(LIST_CACHE_KEY);
+    
+    // 1. Hiển thị ngay từ Cache (Instant Load)
+    if (!bypassCache && raw) {
+      try {
+        allVideos = JSON.parse(raw);
+        renderByTab();
+        // Cập nhật ngầm (Background Revalidation)
+        fetch('api.php?action=list')
+          .then(r => {
+            if (r.status === 304) return null; // Không đổi
+            return r.json();
+          })
+          .then(data => {
+            if (data && !data.error) {
               const fresh = JSON.stringify(data);
               if (fresh !== raw) {
                 allVideos = data;
@@ -534,37 +538,30 @@ if (document.getElementById('videoGrid')) {
                 renderByTab();
                 generateMissingThumbnails();
               }
-            })
-            .catch(() => {});
-          return;
-        } catch (e) { sessionStorage.removeItem(LIST_CACHE_KEY); }
-      }
-    } else {
-      sessionStorage.removeItem(LIST_CACHE_KEY);
+            }
+          })
+          .catch(() => {});
+        return;
+      } catch (e) { sessionStorage.removeItem(LIST_CACHE_KEY); }
     }
+
+    // 2. Nếu không có cache hoặc ép tải lại (bypassCache)
+    if (bypassCache) sessionStorage.removeItem(LIST_CACHE_KEY);
     
     TopBar.show();
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), 10000);
-    fetch('api.php?action=list', { signal: ctrl.signal })
+    fetch('api.php?action=list')
       .then(r => r.json())
       .then(data => {
-        clearTimeout(tid);
         TopBar.done();
         if (data.error) { showToast(data.error, 'error'); return; }
         allVideos = data;
         sessionStorage.setItem(LIST_CACHE_KEY, JSON.stringify(data));
-        renderByTab(); generateMissingThumbnails();
+        renderByTab(); 
+        generateMissingThumbnails();
       })
-      .catch(err => {
-        clearTimeout(tid);
+      .catch(() => {
         TopBar.done();
-        const msg = err.name === 'AbortError' ? 'Tải danh sách quá lâu, thử lại' : 'Lỗi tải danh sách';
-        showToast(msg, 'error');
-        const g = document.getElementById('videoGrid');
-        const es = document.getElementById('emptyState');
-        if (g) g.style.display = 'none';
-        if (es) { es.style.display = 'block'; const p = es.querySelector('p'); if (p) p.textContent = msg; }
+        showToast('Lỗi tải danh sách', 'error');
       });
   }
   window.loadVideos = loadVideos;
