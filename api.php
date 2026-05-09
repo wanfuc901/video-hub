@@ -205,33 +205,40 @@ if ($action === 'stream') {
         exit;
     }
 
+    set_time_limit(0);
+    ignore_user_abort(false); // dừng ngay khi client ngắt kết nối
+
     $begin = 0;
-    $end = $size - 1;
+    $end   = $size - 1;
 
     if (isset($_SERVER['HTTP_RANGE']) && preg_match('/bytes=\h*(\d+)-(\d*)[\D.*]?/i', $_SERVER['HTTP_RANGE'], $m)) {
         $begin = intval($m[1]);
         if (!empty($m[2])) $end = intval($m[2]);
     }
 
-    header(isset($_SERVER['HTTP_RANGE']) ? 'HTTP/1.1 206 Partial Content' : 'HTTP/1.1 200 OK');
+    // Giới hạn mỗi response tối đa 4MB để mobile không bị chờ lâu
+    // Browser sẽ tự range-request thêm khi cần
+    $maxChunk = 4 * 1024 * 1024;
+    if (($end - $begin + 1) > $maxChunk && !isset($_SERVER['HTTP_RANGE'])) {
+        $end = $begin + $maxChunk - 1;
+    }
+
+    $isRange = isset($_SERVER['HTTP_RANGE']) || $end < $size - 1;
+    header($isRange ? 'HTTP/1.1 206 Partial Content' : 'HTTP/1.1 200 OK');
     header('Access-Control-Allow-Origin: *');
     header('Cross-Origin-Resource-Policy: cross-origin');
     header('Accept-Ranges: bytes');
     header("Content-Type: $contentType");
     header('Cache-Control: public, max-age=3600');
-    header('Content-Length: ' . (($end - $begin) + 1));
-
-    if (isset($_SERVER['HTTP_RANGE'])) {
-        header("Content-Range: bytes $begin-$end/$size");
-    }
-
+    header('Content-Length: ' . ($end - $begin + 1));
+    header("Content-Range: bytes $begin-$end/$size");
     header('Content-Disposition: inline; filename=' . basename($path));
+    header('X-Content-Type-Options: nosniff');
 
     fseek($fm, $begin);
-    $length = ($end - $begin) + 1;
+    $length = $end - $begin + 1;
 
-    // 3. Sử dụng stream_copy_to_stream để đạt tốc độ Kernel-level (Zero-copy)
-    // Giảm thiểu tối đa việc sử dụng RAM trung gian của PHP
+    // Zero-copy stream thẳng ra output
     $out = fopen('php://output', 'wb');
     stream_copy_to_stream($fm, $out, $length);
 

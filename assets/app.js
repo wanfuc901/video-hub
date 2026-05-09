@@ -63,6 +63,18 @@ function debounce(fn, ms) {
   return function (...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
 }
 
+// Tính độ tương đồng tên clip dựa trên token overlap (0..1)
+function nameSimilarity(a, b) {
+  const tok = s => s.toLowerCase()
+    .replace(/\.[^.]+$/, '')
+    .split(/[\s\-_.,()[\]]+/)
+    .filter(t => t.length > 1);
+  const ta = tok(a), tb = new Set(tok(b));
+  if (!ta.length || !tb.size) return 0;
+  const matches = ta.filter(t => tb.has(t)).length;
+  return matches / Math.max(ta.length, tb.size);
+}
+
 // ── LOCAL STORAGE KEYS ────────────────────────────────────────
 const FAV_KEY = 'vhub_favorites';
 const HIST_KEY = 'vhub_history';
@@ -598,7 +610,24 @@ if (document.getElementById('videoGrid')) {
     if (tab === 'all') filtered = [...allVideos];
     else if (tab === 'favorites') { const favs = getFavs(); filtered = allVideos.filter(v => favs.includes(v.name)); }
     else if (tab === 'history') { const hist = getHistory().map(h => h.name); hist.forEach(n => { const v = allVideos.find(x => x.name === n); if (v) filtered.push(v); }); }
-    else if (tab === 'suggest') { filtered = allVideos.filter(v => { const p = getProgress(v.path); return !p || p.currentTime < 10; }).sort(() => 0.5 - Math.random()).slice(0, 8); }
+    else if (tab === 'suggest') {
+      const hist = getHistory().slice(0, 5);
+      const favs = getFavs();
+      filtered = allVideos.map(v => {
+        const p = getProgress(v.path);
+        const pct = (p && p.duration > 0) ? (p.currentTime / p.duration) * 100 : 0;
+        let score = pct > 90 ? -8 : 0;                      // hạ điểm đã xem xong
+        if (favs.includes(v.name)) score += 1;               // ưu tiên nhẹ yêu thích
+        hist.forEach((h, i) => {
+          score += nameSimilarity(v.name, h.name) * (3 - i * 0.5); // giảm dần theo lịch sử
+        });
+        score += Math.random() * 0.5;                        // nhiễu nhỏ để đa dạng
+        return { v, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .map(x => x.v)
+      .slice(0, 8);
+    }
     if (tab === 'all' || tab === 'favorites') {
       const sv = document.getElementById('sortSelect')?.value || 'newest';
       filtered.sort((a, b) => {
@@ -952,7 +981,20 @@ if (document.getElementById('videoPlayer')) {
     }
     const sidebar = document.getElementById('sidebarSuggests');
     if (sidebar) {
-      data.filter(v => v.name !== CURRENT_FILE).sort(() => 0.5 - Math.random()).slice(0, 12).forEach(v => {
+      const suggestions = data
+        .filter(v => v.name !== CURRENT_FILE)
+        .map(v => {
+          const p = getProgress(v.path);
+          const pct = (p && p.duration > 0) ? (p.currentTime / p.duration) * 100 : 0;
+          const score = nameSimilarity(CURRENT_FILE, v.name) * 4
+                        - (pct > 90 ? 2 : 0)
+                        + Math.random() * 0.3;
+          return { v, score };
+        })
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 12)
+        .map(x => x.v);
+      suggestions.forEach(v => {
         const item = document.createElement('a');
         item.className = 'sidebar-item'; item.href = `player.php?path=${encodeURIComponent(v.path)}`;
         const thumbUrl = v.thumbnail_exists ? `api.php?action=thumbnail&file=${encodeURIComponent(v.name)}` : '';
@@ -1004,7 +1046,16 @@ if (document.getElementById('videoPlayer')) {
   const pauseIcon = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
   function togglePlay() { if (video && video.paused) { video.play(); if (playPauseBtn) playPauseBtn.innerHTML = pauseIcon; } else if (video) { video.pause(); if (playPauseBtn) playPauseBtn.innerHTML = playIcon; } }
   if (playPauseBtn) playPauseBtn.addEventListener('click', togglePlay);
-  if (video) video.addEventListener('click', togglePlay);
+  // Desktop: click video để play/pause
+  // Mobile: tap video — nếu controls đang ẩn thì chỉ hiện controls, không toggle play
+  if (video) video.addEventListener('click', e => {
+    const isTouchDevice = window.matchMedia('(hover: none)').matches;
+    if (isTouchDevice) {
+      const controlsVisible = playerControls && playerControls.classList.contains('active');
+      if (!controlsVisible) { resetHide(); return; }
+    }
+    togglePlay();
+  });
 
   if (video) {
     video.addEventListener('waiting', () => { playerWrapper.classList.add('video-loading'); });
@@ -1081,7 +1132,42 @@ if (document.getElementById('videoPlayer')) {
   const speeds = [0.5, 1, 1.25, 1.5, 2]; let speedIdx = 1;
   if (speedBtn) speedBtn.addEventListener('click', () => { speedIdx = (speedIdx + 1) % speeds.length; if (video) video.playbackRate = speeds[speedIdx]; speedBtn.textContent = speeds[speedIdx] + 'x'; });
   if (pipBtn) pipBtn.addEventListener('click', async () => { try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else if (video) await video.requestPictureInPicture(); } catch (e) { showToast('PIP không được hỗ trợ', 'error'); } });
-  if (fullscreenBtn) fullscreenBtn.addEventListener('click', () => { if (!document.fullscreenElement) { if (playerWrapper) playerWrapper.requestFullscreen().catch(() => { }); } else document.exitFullscreen(); });
+  const fsEnterIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>`;
+  const fsExitIcon  = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>`;
+
+  function updateFsIcon() {
+    if (!fullscreenBtn) return;
+    const isFS = document.fullscreenElement || document.webkitFullscreenElement;
+    fullscreenBtn.innerHTML = isFS ? fsExitIcon : fsEnterIcon;
+  }
+
+  if (fullscreenBtn) fullscreenBtn.addEventListener('click', async () => {
+    const isFS = document.fullscreenElement || document.webkitFullscreenElement;
+    if (isFS) {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    } else {
+      try {
+        if (playerWrapper.requestFullscreen) {
+          await playerWrapper.requestFullscreen();
+        } else if (playerWrapper.webkitRequestFullscreen) {
+          await playerWrapper.webkitRequestFullscreen();
+        } else if (video && video.webkitEnterFullscreen) {
+          // iOS Safari fallback — chỉ hỗ trợ fullscreen trên <video>
+          video.webkitEnterFullscreen();
+        }
+      } catch (_e) {
+        try { if (video && video.webkitEnterFullscreen) video.webkitEnterFullscreen(); } catch (_) {}
+      }
+    }
+  });
+
+  ['fullscreenchange', 'webkitfullscreenchange'].forEach(ev =>
+    document.addEventListener(ev, updateFsIcon)
+  );
+  if (video) {
+    video.addEventListener('webkitbeginfullscreen', () => { if (fullscreenBtn) fullscreenBtn.innerHTML = fsExitIcon; });
+    video.addEventListener('webkitendfullscreen',   () => { if (fullscreenBtn) fullscreenBtn.innerHTML = fsEnterIcon; });
+  }
 
   setInterval(() => { if (video && !video.paused && video.currentTime > 0) localStorage.setItem('video_progress_' + CURRENT_PATH, video.currentTime + '|' + video.duration); }, 4000);
   if (video) video.addEventListener('ended', () => localStorage.removeItem('video_progress_' + CURRENT_PATH));
@@ -1090,6 +1176,16 @@ if (document.getElementById('videoPlayer')) {
   if (playerWrapper) {
     playerWrapper.addEventListener('mousemove', resetHide);
     playerWrapper.addEventListener('mouseleave', () => { if (video && !video.paused) { if (playerControls) playerControls.classList.remove('active'); } });
+    // Mobile: tap để toggle controls (không toggle play ngay)
+    playerWrapper.addEventListener('touchstart', () => {
+      const isActive = playerControls && playerControls.classList.contains('active');
+      if (isActive) {
+        clearTimeout(hideTimeout);
+        if (playerControls) playerControls.classList.remove('active');
+      } else {
+        resetHide();
+      }
+    }, { passive: true });
   }
   if (video) {
     video.addEventListener('play', resetHide);
