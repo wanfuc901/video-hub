@@ -954,7 +954,17 @@ if (document.getElementById('videoPlayer')) {
   if (video) video.addEventListener('click', togglePlay);
 
   if (video) {
-    video.addEventListener('timeupdate', () => { if (!isSeeking && video.duration) { const pct = (video.currentTime / video.duration) * 100; if (seekBarFill) seekBarFill.style.width = pct + '%'; if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(video.currentTime); } });
+    video.addEventListener('waiting', () => { playerWrapper.classList.add('video-loading'); });
+    video.addEventListener('playing', () => { playerWrapper.classList.remove('video-loading'); });
+    video.addEventListener('seeked', () => { playerWrapper.classList.remove('video-loading'); });
+
+    video.addEventListener('timeupdate', () => { 
+        if (!isSeeking && video.duration) { 
+            const pct = (video.currentTime / video.duration) * 100; 
+            if (seekBarFill) seekBarFill.style.width = pct + '%'; 
+            if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(video.currentTime); 
+        } 
+    });
     video.addEventListener('loadedmetadata', () => {
       if (durationDisplay) durationDisplay.textContent = formatTime(video.duration);
       const prog = getProgress(CURRENT_PATH);
@@ -962,9 +972,50 @@ if (document.getElementById('videoPlayer')) {
     });
   }
 
-  if (seekBarContainer) seekBarContainer.addEventListener('mousedown', e => { isSeeking = true; updateSeek(e); document.addEventListener('mousemove', updateSeek); document.addEventListener('mouseup', stopSeek); });
-  function updateSeek(e) { if (!seekBarContainer) return; const r = seekBarContainer.getBoundingClientRect(); let p = (e.clientX - r.left) / r.width; p = Math.max(0, Math.min(1, p)); if (seekBarFill) seekBarFill.style.width = (p * 100) + '%'; if (video && video.duration) video.currentTime = p * video.duration; }
-  function stopSeek() { isSeeking = false; document.removeEventListener('mousemove', updateSeek); document.removeEventListener('mouseup', stopSeek); }
+  if (seekBarContainer) {
+    seekBarContainer.addEventListener('mousedown', startSeek);
+    seekBarContainer.addEventListener('touchstart', startSeek, { passive: false });
+  }
+
+  function getClientX(e) {
+    return e.touches ? e.touches[0].clientX : e.clientX;
+  }
+
+  function startSeek(e) {
+    isSeeking = true;
+    updateSeekUI(e);
+    if (e.type === 'mousedown') {
+      document.addEventListener('mousemove', updateSeekUI);
+      document.addEventListener('mouseup', stopSeek);
+    } else {
+      document.addEventListener('touchmove', updateSeekUI, { passive: false });
+      document.addEventListener('touchend', stopSeek);
+    }
+  }
+
+  function updateSeekUI(e) {
+    if (!seekBarContainer || !video.duration) return;
+    if (e.cancelable) e.preventDefault();
+    const r = seekBarContainer.getBoundingClientRect();
+    let p = (getClientX(e) - r.left) / r.width;
+    p = Math.max(0, Math.min(1, p));
+    if (seekBarFill) seekBarFill.style.width = (p * 100) + '%';
+    if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(p * video.duration);
+  }
+
+  function stopSeek(e) {
+    if (isSeeking && video.duration) {
+      const r = seekBarContainer.getBoundingClientRect();
+      let p = (getClientX(e.changedTouches ? e.changedTouches[0] : e) - r.left) / r.width;
+      p = Math.max(0, Math.min(1, p));
+      video.currentTime = p * video.duration;
+    }
+    isSeeking = false;
+    document.removeEventListener('mousemove', updateSeekUI);
+    document.removeEventListener('mouseup', stopSeek);
+    document.removeEventListener('touchmove', updateSeekUI);
+    document.removeEventListener('touchend', stopSeek);
+  }
 
   if (volumeSlider) volumeSlider.addEventListener('input', e => { if (video) { video.volume = e.target.value; video.muted = video.volume === 0; updateMuteIcon(); } });
   if (muteBtn) muteBtn.addEventListener('click', () => { if (video) { video.muted = !video.muted; if (!video.muted && video.volume === 0) video.volume = 1; if (volumeSlider) volumeSlider.value = video.muted ? 0 : video.volume; updateMuteIcon(); } });

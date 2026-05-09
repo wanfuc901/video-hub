@@ -26,7 +26,7 @@ if (empty($path)) die("No video specified.");
     <div class="player-layout">
         <div class="main-player-area">
             <div class="custom-player-wrapper" id="playerWrapper">
-                <video id="videoPlayer" src="api.php?action=stream&path=<?= urlencode($path) ?>"></video>
+                <video id="videoPlayer" src="api.php?action=stream&path=<?= urlencode($path) ?>" preload="metadata" playsinline></video>
                 <div class="player-controls" id="playerControls">
                     <div class="seek-bar-container" id="seekBarContainer">
                         <div class="seek-bar-fill" id="seekBarFill"></div>

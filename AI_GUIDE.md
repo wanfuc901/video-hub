@@ -158,3 +158,15 @@ $scanDirs  = [$uploadDir];               // quét video từ đây
 5. Sau khi sửa: kiểm tra cuối index.php không có dòng script thừa
 6. Deploy = upload file PHP/JS/CSS lên server, không đụng videos/thumbnails
 ```
+
+---
+
+## 🎞️ Tối ưu hóa Video đầu vào (Rất quan trọng cho Mobile)
+
+Để video dung lượng lớn (10GB+) có thể phát ngay lập tức và tua (seek) mượt mà trên trình duyệt di động, bạn **NÊN** xử lý video qua FFmpeg với flag `+faststart`. Flag này sẽ đẩy metadata (moov atom) lên đầu file.
+
+**Lệnh thực thi:**
+```bash
+ffmpeg -i input.mp4 -c copy -movflags +faststart output.mp4
+```
+

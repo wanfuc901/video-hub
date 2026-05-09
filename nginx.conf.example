@@ -1,0 +1,44 @@
+# 🚀 Nginx Config for Video Hub (Termux)
+# Place this at: /data/data/com.termux/files/usr/etc/nginx/nginx.conf
+
+worker_processes auto;
+events { worker_connections 1024; }
+
+http {
+    include mime.types;
+    default_type application/octet-stream;
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+
+    # Performance for big files
+    client_max_body_size 10000M;
+    proxy_max_temp_file_size 0;
+
+    server {
+        listen 8080;
+        server_name localhost;
+        root /data/data/com.termux/files/home/video-hub;
+
+        index index.php;
+
+        location / {
+            try_files $uri $uri/ /index.php?$query_string;
+        }
+
+        # Nginx Offloading (Internal location for big files)
+        location /internal_videos/ {
+            internal;
+            alias /data/data/com.termux/files/home/video-hub/videos/; # Path to your videos dir
+        }
+
+        location ~ \.php$ {
+            # Use Unix socket for speed
+            include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+            fastcgi_param USE_NGINX 1; # Enable Nginx offloading in api.php
+            fastcgi_pass 127.0.0.1:9000; # Assuming php-fpm is on 9000
+        }
+    }
+}

@@ -164,21 +164,67 @@ if ($action === 'delete_many') {
 }
 
 if ($action === 'stream') {
-    $path=$_GET['path']??'';
-    if(empty($path)||!file_exists($path)){http_response_code(404);exit;}
-    $size=filesize($path);$fm=@fopen($path,'rb');if(!$fm){http_response_code(500);exit;}
-    $begin=0;$end=$size-1;
-    if(isset($_SERVER['HTTP_RANGE'])&&preg_match('/bytes=\h*(\d+)-(\d*)[\D.*]?/i',$_SERVER['HTTP_RANGE'],$m)){$begin=intval($m[1]);if(!empty($m[2]))$end=intval($m[2]);}
-    header(isset($_SERVER['HTTP_RANGE'])?'HTTP/1.1 206 Partial Content':'HTTP/1.1 200 OK');
-    header('Access-Control-Allow-Origin: *');header('Cross-Origin-Resource-Policy: cross-origin');header('Accept-Ranges: bytes');
-    $ext=strtolower(pathinfo($path,PATHINFO_EXTENSION));
-    $mm=['mp4'=>'video/mp4','mkv'=>'video/x-matroska','avi'=>'video/x-msvideo','mov'=>'video/quicktime','webm'=>'video/webm','m4v'=>'video/mp4'];
-    header('Content-Type: '.($mm[$ext]??'video/mp4'));
+    $path = $_GET['path'] ?? '';
+    if (empty($path) || !file_exists($path)) {
+        http_response_code(404);
+        exit;
+    }
+
+    // 1. Dọn dẹp tuyệt đối mọi bộ đệm để tránh độ trễ (Latency)
+    while (ob_get_level() > 0) ob_end_clean();
+
+    $size = filesize($path);
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    $mm = ['mp4' => 'video/mp4', 'mkv' => 'video/x-matroska', 'avi' => 'video/x-msvideo', 'mov' => 'video/quicktime', 'webm' => 'video/webm', 'm4v' => 'video/mp4'];
+    $contentType = $mm[$ext] ?? 'video/mp4';
+
+    // 2. Tùy chọn Nginx Offloading (X-Accel-Redirect)
+    // Nếu bạn chạy qua Nginx, hãy đặt biến môi trường USE_NGINX=1
+    if (getenv('USE_NGINX') === '1') {
+        // Giả định thư mục videos được map vào /internal_videos/ trong nginx config
+        $relative_path = str_replace(__DIR__, '', realpath($path));
+        header("X-Accel-Redirect: /internal_videos" . $relative_path);
+        header("Content-Type: $contentType");
+        exit;
+    }
+
+    $fm = @fopen($path, 'rb');
+    if (!$fm) {
+        http_response_code(500);
+        exit;
+    }
+
+    $begin = 0;
+    $end = $size - 1;
+
+    if (isset($_SERVER['HTTP_RANGE']) && preg_match('/bytes=\h*(\d+)-(\d*)[\D.*]?/i', $_SERVER['HTTP_RANGE'], $m)) {
+        $begin = intval($m[1]);
+        if (!empty($m[2])) $end = intval($m[2]);
+    }
+
+    header(isset($_SERVER['HTTP_RANGE']) ? 'HTTP/1.1 206 Partial Content' : 'HTTP/1.1 200 OK');
+    header('Access-Control-Allow-Origin: *');
+    header('Cross-Origin-Resource-Policy: cross-origin');
+    header('Accept-Ranges: bytes');
+    header("Content-Type: $contentType");
     header('Cache-Control: public, max-age=3600');
-    header('Content-Length: '.(($end-$begin)+1));
-    if(isset($_SERVER['HTTP_RANGE']))header("Content-Range: bytes $begin-$end/$size");
-    header('Content-Disposition: inline; filename='.basename($path));
-    fseek($fm,$begin);$cur=$begin;
-    while(!feof($fm)&&$cur<=$end&&connection_status()==0){print fread($fm,min(1024*1024,($end-$cur)+1));$cur+=1024*1024;@ob_flush();flush();}
-    fclose($fm);exit;
+    header('Content-Length: ' . (($end - $begin) + 1));
+
+    if (isset($_SERVER['HTTP_RANGE'])) {
+        header("Content-Range: bytes $begin-$end/$size");
+    }
+
+    header('Content-Disposition: inline; filename=' . basename($path));
+
+    fseek($fm, $begin);
+    $length = ($end - $begin) + 1;
+
+    // 3. Sử dụng stream_copy_to_stream để đạt tốc độ Kernel-level (Zero-copy)
+    // Giảm thiểu tối đa việc sử dụng RAM trung gian của PHP
+    $out = fopen('php://output', 'wb');
+    stream_copy_to_stream($fm, $out, $length);
+
+    fclose($out);
+    fclose($fm);
+    exit;
 }

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh)",
+      "Bash(sh)",
+      "Bash(curl -fsSL \"https://api.github.com/repos/rtk-ai/rtk/releases/latest\")",
+      "Bash(python -c \"import sys,json; r=json.load\\(sys.stdin\\); [print\\(a['name'], a['browser_download_url']\\) for a in r.get\\('assets',[]\\)]\")",
+      "PowerShell(rtk init *)",
+      "PowerShell(rtk gain *)"
+    ]
+  }
+}
