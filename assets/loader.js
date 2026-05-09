@@ -108,11 +108,22 @@
     }
   `;
 
+  // SESSION CHECK: Chỉ chạy animation 1 lần mỗi phiên làm việc
+  const HAS_LOADED = sessionStorage.getItem('vhub_initial_loaded');
+
+  if (HAS_LOADED) {
+    // Nếu đã load rồi, không hiện loader hoặc xóa ngay lập tức
+    return; 
+  }
+
   document.head.appendChild(style);
   document.body.insertBefore(overlay, document.body.firstChild);
 
   async function runLoader() {
     await delay(300);
+    
+    // Đánh dấu đã load để lần sau không hiện nữa
+    sessionStorage.setItem('vhub_initial_loaded', 'true');
 
     const left  = document.getElementById('vhEdgeLeft');
     const right = document.getElementById('vhEdgeRight');
