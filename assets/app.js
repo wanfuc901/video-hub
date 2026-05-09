@@ -736,14 +736,25 @@ if (document.getElementById('videoGrid')) {
       const editBtn = titleEl?.querySelector('.edit-title-btn-small');
       if (editBtn) editBtn.onclick = e => {
         e.stopPropagation();
+        
+        // Tách tên và đuôi để chỉ cho sửa phần tên
+        const lastDot = displayName.lastIndexOf('.');
+        const baseName = lastDot !== -1 ? displayName.substring(0, lastDot) : displayName;
+        const extension = lastDot !== -1 ? displayName.substring(lastDot) : '';
+
         const input = document.createElement('input');
-        input.className = 'title-edit-input'; input.value = displayName;
-        if (titleEl) titleEl.replaceWith(input); input.focus();
+        input.className = 'title-edit-input'; 
+        input.value = baseName;
+        
+        if (titleEl) titleEl.replaceWith(input); 
+        input.focus();
+
         const save = () => {
-          const nv = input.value.trim();
-          if (nv && nv !== displayName) {
-            fetch('api.php?action=update_title', { method: 'POST', body: JSON.stringify({ file: v.name, title: nv }), headers: { 'Content-Type': 'application/json' } })
-              .then(r => r.json()).then(res => { if (res.success) { showToast('Đã lưu tên'); v.title_custom = nv; renderByTab(); } });
+          let nv = input.value.trim();
+          if (nv && nv !== baseName) {
+            const finalTitle = nv + extension;
+            fetch('api.php?action=update_title', { method: 'POST', body: JSON.stringify({ file: v.name, title: finalTitle }), headers: { 'Content-Type': 'application/json' } })
+              .then(r => r.json()).then(res => { if (res.success) { showToast('Đã lưu tên'); v.title_custom = finalTitle; renderByTab(); } });
           } else renderByTab();
         };
         input.onblur = save;
@@ -958,10 +969,27 @@ if (document.getElementById('videoPlayer')) {
   if (editBtn) editBtn.addEventListener('click', () => {
     const tt = document.getElementById('titleText');
     if (!tt) return;
-    const nv = prompt('Sửa tên video:', tt.textContent);
-    if (nv && nv.trim() !== tt.textContent) {
-      fetch('api.php?action=update_title', { method: 'POST', body: JSON.stringify({ file: CURRENT_FILE, title: nv.trim() }), headers: { 'Content-Type': 'application/json' } })
-        .then(r => r.json()).then(res => { if (res.success) { showToast('Đã lưu tên'); tt.textContent = nv.trim(); } });
+    
+    const currentTitle = tt.textContent;
+    const lastDot = currentTitle.lastIndexOf('.');
+    const baseName = lastDot !== -1 ? currentTitle.substring(0, lastDot) : currentTitle;
+    const extension = lastDot !== -1 ? currentTitle.substring(lastDot) : '';
+
+    const nv = prompt('Sửa tên video (không cần nhập đuôi file):', baseName);
+    if (nv && nv.trim() !== baseName) {
+      const finalTitle = nv.trim() + extension;
+      fetch('api.php?action=update_title', { 
+        method: 'POST', 
+        body: JSON.stringify({ file: CURRENT_FILE, title: finalTitle }), 
+        headers: { 'Content-Type': 'application/json' } 
+      })
+      .then(r => r.json()).then(res => { 
+        if (res.success) { 
+          showToast('Đã lưu tên'); 
+          tt.textContent = finalTitle; 
+          document.title = 'Playing: ' + finalTitle;
+        } 
+      });
     }
   });
 
