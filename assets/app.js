@@ -2,6 +2,31 @@
 // VHHUB — app.js (Enhanced Edition)
 // ═══════════════════════════════════════════════════════════════
 
+// ── TOP LOADING BAR MANAGER ─────────────────────────────────
+const TopBar = {
+  el: null,
+  init() {
+    if (this.el) return;
+    this.el = document.createElement('div');
+    this.el.id = 'topLoadingBar';
+    document.body.appendChild(this.el);
+  },
+  show() {
+    this.init();
+    this.el.style.opacity = '1';
+    this.el.style.width = '20%';
+    setTimeout(() => { if (this.el.style.width === '20%') this.el.style.width = '60%'; }, 200);
+  },
+  done() {
+    if (!this.el) return;
+    this.el.style.width = '100%';
+    setTimeout(() => {
+      this.el.style.opacity = '0';
+      setTimeout(() => { this.el.style.width = '0%'; }, 400);
+    }, 300);
+  }
+};
+
 // ── TOAST ────────────────────────────────────────────────────
 function showToast(msg, type = 'success', duration = 3000) {
   const c = document.getElementById('toastContainer');
@@ -517,13 +542,15 @@ if (document.getElementById('videoGrid')) {
     } else {
       sessionStorage.removeItem(LIST_CACHE_KEY);
     }
-    renderSkeleton();
+    
+    TopBar.show();
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), 10000);
     fetch('api.php?action=list', { signal: ctrl.signal })
       .then(r => r.json())
       .then(data => {
         clearTimeout(tid);
+        TopBar.done();
         if (data.error) { showToast(data.error, 'error'); return; }
         allVideos = data;
         sessionStorage.setItem(LIST_CACHE_KEY, JSON.stringify(data));
@@ -531,6 +558,7 @@ if (document.getElementById('videoGrid')) {
       })
       .catch(err => {
         clearTimeout(tid);
+        TopBar.done();
         const msg = err.name === 'AbortError' ? 'Tải danh sách quá lâu, thử lại' : 'Lỗi tải danh sách';
         showToast(msg, 'error');
         const g = document.getElementById('videoGrid');

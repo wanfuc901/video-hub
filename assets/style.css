@@ -220,6 +220,22 @@ main { margin-top: 64px; }
 .radio-opt { display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer; }
 .radio-opt input { accent-color:var(--accent); }
 
+/* ── TOP LOADING BAR ─────────────────────────────────────── */
+#topLoadingBar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), #ff7eb3);
+  z-index: 1000000;
+  transition: width 0.3s ease, opacity 0.4s ease;
+  pointer-events: none;
+}
+.loading-active #topLoadingBar {
+  opacity: 1;
+}
+
 /* ── VIDEO LOADING SPINNER ───────────────────────────────── */
 .custom-player-wrapper.video-loading::after {
   content: "";
