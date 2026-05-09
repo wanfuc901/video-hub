@@ -14,7 +14,7 @@ if (empty($path)) die("No video specified.");
     <link rel="stylesheet" href="assets/style.css?v=<?= time() ?>">
 </head>
 <body class="player-page">
-    <script src="assets/loader.js"></script>
+    <script src="assets/loader.js?v=<?= time() ?>"></script>
     <div id="toastContainer"></div>
     <header>
         <a href="index.php" class="logo" style="padding-left:24px;">

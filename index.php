@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="assets/style.css?v=<?= time() ?>">
 </head>
 <body>
-<script src="assets/loader.js"></script>
+<script src="assets/loader.js?v=<?= time() ?>"></script>
 <div id="toastContainer"></div>
 
 <!-- ════════════════ HEADER ════════════════ -->

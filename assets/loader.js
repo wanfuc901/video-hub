@@ -119,11 +119,11 @@
   document.head.appendChild(style);
   document.body.insertBefore(overlay, document.body.firstChild);
 
+  // Đánh dấu đã load NGAY LẬP TỨC để tránh lặp lại nếu chuyển trang giữa chừng
+  sessionStorage.setItem('vhub_initial_loaded', 'true');
+
   async function runLoader() {
     await delay(300);
-    
-    // Đánh dấu đã load để lần sau không hiện nữa
-    sessionStorage.setItem('vhub_initial_loaded', 'true');
 
     const left  = document.getElementById('vhEdgeLeft');
     const right = document.getElementById('vhEdgeRight');
