@@ -81,6 +81,17 @@ if (empty($path)) die("No video specified.");
     <script>
         const CURRENT_FILE = <?= json_encode($filename) ?>;
         const CURRENT_PATH = <?= json_encode($path) ?>;
+
+        // CẮT ĐUÔI: Giải phóng Socket ngay lập tức khi rời trang để không nghẽn mạng
+        window.addEventListener('beforeunload', () => {
+            const v = document.getElementById('videoPlayer');
+            if (v) {
+                v.pause();
+                v.src = "";
+                v.load();
+                v.remove();
+            }
+        });
     </script>
     <script src="assets/app.js?v=<?= time() ?>"></script>
 </body>

@@ -20,42 +20,41 @@ function saveTitles($t) { global $titlesFile; file_put_contents($titlesFile, jso
 function bustListCache() { global $cacheFile; @unlink($cacheFile); }
 
 if ($action === 'list') {
+    // 1. Ưu tiên đọc cache để tốc độ cực nhanh
     if (file_exists($cacheFile)) {
         header('Content-Type: application/json');
-        header('Cache-Control: no-store');
+        header('Cache-Control: public, max-age=15'); // Cho phép trình duyệt cache 15s để quay lại mượt
         readfile($cacheFile);
         exit;
     }
+
+    // 2. FALLBACK: Nếu chưa có cache, thực hiện quét đĩa bình thường (đảm bảo không lỗi)
     $titles = getTitles(); $videos = []; $seen = [];
     foreach ($scanDirs as $dir) {
         if (!is_dir($dir)) continue;
-        $iter = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
-        foreach ($iter as $file) {
-            if (!$file->isFile()) continue;
-            $ext = strtolower($file->getExtension());
-            if (!in_array($ext, $supportedExts)) continue;
-            $fn = $file->getFilename();
-            if (isset($seen[$fn])) continue; $seen[$fn] = true;
-            $key = md5($fn);
-            
-            // HYBRID: Check for either .webp (new) or .jpg (old/client-side)
-            $hasThumb = file_exists($thumbDir.DIRECTORY_SEPARATOR.$key.'.webp') || 
-                        file_exists($thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg');
-                        
-            $videos[] = [
-                'name'=>$fn,
-                'path'=>$file->getPathname(),
-                'size'=>$file->getSize(),
-                'ext'=>$ext,
-                'title_custom'=>$titles[$fn]??null,
-                'thumbnail_exists'=>$hasThumb,
-                'mtime'=>$file->getMTime()
-            ];
-        }
+        try {
+            $iter = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
+            foreach ($iter as $file) {
+                if (!$file->isFile()) continue;
+                $ext = strtolower($file->getExtension());
+                if (!in_array($ext, $supportedExts)) continue;
+                $fn = $file->getFilename();
+                if (isset($seen[$fn])) continue; $seen[$fn] = true;
+                $key = md5($fn);
+                $hasThumb = file_exists($thumbDir.DIRECTORY_SEPARATOR.$key.'.webp') || file_exists($thumbDir.DIRECTORY_SEPARATOR.$key.'.jpg');
+                $videos[] = [
+                    'name'=>$fn, 'path'=>$file->getPathname(), 'size'=>$file->getSize(), 'ext'=>$ext,
+                    'title_custom'=>$titles[$fn]??null, 'thumbnail_exists'=>$hasThumb, 'mtime'=>$file->getMTime()
+                ];
+            }
+        } catch (Exception $e) {}
     }
     usort($videos, fn($a,$b) => $b['mtime'] <=> $a['mtime']);
     $json = json_encode($videos);
+    
+    // Lưu lại cache cho lần sau nhanh hơn
     file_put_contents($cacheFile, $json);
+    
     echo $json;
     exit;
 }
