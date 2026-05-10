@@ -190,7 +190,6 @@ if ($action === 'stream') {
     $contentType = $mm[$ext] ?? 'video/mp4';
 
     // 2. Nginx Offloading — api.php chỉ xác thực, Nginx serve file trực tiếp
-    // Được bật khi fastcgi_param USE_NGINX 1 trong nginx.conf (setup-nginx-termux.sh)
     if (getenv('USE_NGINX') === '1') {
         $realPath     = realpath($path);
         $realVideoDir = realpath($videoDir);
@@ -198,13 +197,10 @@ if ($action === 'stream') {
 
         if ($realVideoDir && $realPath &&
             str_starts_with($realPath, $realVideoDir . DIRECTORY_SEPARATOR)) {
-            // File trong thư mục videos/ chính
             $sub       = substr($realPath, strlen($realVideoDir));
             $accelPath = '/internal_videos' . str_replace(DIRECTORY_SEPARATOR, '/', $sub);
-
         } elseif ($realPath &&
                   str_starts_with($realPath, '/storage/emulated/0/Videos/')) {
-            // File trong bộ nhớ Android
             $sub       = substr($realPath, strlen('/storage/emulated/0/Videos'));
             $accelPath = '/internal_storage' . $sub;
         }
@@ -216,7 +212,6 @@ if ($action === 'stream') {
             header('Cache-Control: public, max-age=3600');
             exit;
         }
-        // Nếu không map được → fall through sang PHP streaming bên dưới
     }
 
     $fm = @fopen($path, 'rb');
@@ -228,9 +223,9 @@ if ($action === 'stream') {
     set_time_limit(0);
     ignore_user_abort(false);
 
-    // Tắt mọi lớp nén — video đã nén sẵn, nén thêm chỉ tốn CPU và gây delay
+    // Tắt mọi lớp nén
     @ini_set('zlib.output_compression', 'Off');
-    @apache_setenv('no-gzip', '1');
+    if (function_exists('apache_setenv')) @apache_setenv('no-gzip', '1');
 
     $begin = 0;
     $end   = $size - 1;
@@ -241,27 +236,32 @@ if ($action === 'stream') {
     }
 
     $isRange = isset($_SERVER['HTTP_RANGE']);
-    header($isRange ? 'HTTP/1.1 206 Partial Content' : 'HTTP/1.1 200 OK');
+    if ($isRange) {
+        header('HTTP/1.1 206 Partial Content');
+        header("Content-Range: bytes $begin-$end/$size");
+    } else {
+        header('HTTP/1.1 200 OK');
+    }
+
     header('Access-Control-Allow-Origin: *');
     header('Cross-Origin-Resource-Policy: cross-origin');
     header('Accept-Ranges: bytes');
     header("Content-Type: $contentType");
-    header('Content-Encoding: identity'); // tắt mod_deflate cho video
+    header('Content-Encoding: identity');
     header('Cache-Control: public, max-age=3600');
     header('Content-Length: ' . ($end - $begin + 1));
-    header("Content-Range: bytes $begin-$end/$size");
-    header('Content-Disposition: inline; filename=' . basename($path));
+    header('Content-Disposition: inline; filename="' . addslashes(basename($path)) . '"');
     header('X-Content-Type-Options: nosniff');
 
     fseek($fm, $begin);
     $remaining = ($end - $begin) + 1;
-    $bufSize   = 512 * 1024; // 512KB mỗi lần đọc — flush ngay xuống client
+    $bufSize   = 128 * 1024; // Giảm xuống 128KB để phản hồi nhạy hơn
 
     while ($remaining > 0 && !feof($fm) && connection_status() === 0) {
         $chunk = fread($fm, min($bufSize, $remaining));
         if ($chunk === false) break;
         echo $chunk;
-        flush(); // buộc Apache gửi ngay, không buffer
+        flush();
         $remaining -= strlen($chunk);
     }
 
