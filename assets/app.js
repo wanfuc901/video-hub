@@ -1074,6 +1074,21 @@ if (document.getElementById('videoPlayer')) {
       const prog = getProgress(CURRENT_PATH);
       if (prog && prog.currentTime > 0 && prog.currentTime < video.duration - 5) { video.currentTime = prog.currentTime; showToast(`Tiếp tục từ ${formatTime(video.currentTime)}`, 'info'); }
     });
+    video.addEventListener('error', () => {
+      playerWrapper.classList.remove('video-loading');
+      const nativeMimes = ['video/mp4', 'video/webm'];
+      const isLikelyUnsupported = !nativeMimes.includes(CURRENT_MIME);
+      const msg = isLikelyUnsupported
+        ? `Format ${CURRENT_EXT.toUpperCase()} không được hỗ trợ trên trình duyệt này. Dùng Safari (iOS) hoặc Chrome/Firefox trên máy tính để xem.`
+        : 'Không thể tải video. Kiểm tra lại kết nối hoặc thử tải lại trang.';
+      showToast(msg, 'error', 8000);
+      if (playerWrapper) {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#111;color:#fff;gap:12px;padding:20px;text-align:center;z-index:5;';
+        overlay.innerHTML = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p style="font-size:14px;color:#ccc;max-width:280px;">${msg}</p>`;
+        playerWrapper.appendChild(overlay);
+      }
+    });
   }
 
   if (seekBarContainer) {

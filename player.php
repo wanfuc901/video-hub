@@ -3,6 +3,14 @@ require __DIR__ . '/auth.php';
 $path = $_GET['path'] ?? '';
 $filename = basename($path);
 if (empty($path)) die("No video specified.");
+
+$extMime = [
+    'mp4' => 'video/mp4',   'mov' => 'video/quicktime',
+    'mkv' => 'video/x-matroska', 'avi' => 'video/x-msvideo',
+    'webm' => 'video/webm', 'm4v' => 'video/mp4',
+];
+$fileExt  = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+$mimeType = $extMime[$fileExt] ?? 'video/mp4';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -26,7 +34,11 @@ if (empty($path)) die("No video specified.");
     <div class="player-layout">
         <div class="main-player-area">
             <div class="custom-player-wrapper" id="playerWrapper">
-                <video id="videoPlayer" src="api.php?action=stream&path=<?= urlencode($path) ?>" preload="metadata" playsinline></video>
+                <video id="videoPlayer"
+                    src="api.php?action=stream&path=<?= urlencode($path) ?>"
+                    type="<?= htmlspecialchars($mimeType) ?>"
+                    preload="metadata"
+                    playsinline></video>
                 <div class="player-controls" id="playerControls">
                     <div class="seek-bar-container" id="seekBarContainer">
                         <div class="seek-bar-fill" id="seekBarFill"></div>
@@ -81,6 +93,8 @@ if (empty($path)) die("No video specified.");
     <script>
         const CURRENT_FILE = <?= json_encode($filename) ?>;
         const CURRENT_PATH = <?= json_encode($path) ?>;
+        const CURRENT_EXT  = <?= json_encode($fileExt) ?>;
+        const CURRENT_MIME = <?= json_encode($mimeType) ?>;
 
         // CẮT ĐUÔI: Giải phóng Socket ngay lập tức khi rời trang để không nghẽn mạng
         window.addEventListener('beforeunload', () => {
