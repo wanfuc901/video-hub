@@ -34,7 +34,7 @@ $mimeType = $extMime[$fileExt] ?? 'video/mp4';
     <div class="player-layout">
         <div class="main-player-area">
             <div class="custom-player-wrapper" id="playerWrapper">
-                <video id="videoPlayer" preload="none" playsinline>
+                <video id="videoPlayer" preload="metadata" playsinline>
                     <source src="api.php?action=stream&path=<?= urlencode($path) ?>"
                             type="<?= htmlspecialchars($mimeType) ?>">
                 </video>

@@ -980,9 +980,6 @@ if (document.getElementById('videoPlayer')) {
       document.title = 'Playing: ' + vid.title_custom;
       addToHistory(CURRENT_FILE, CURRENT_PATH, vid.title_custom);
     }
-    if (vid?.duration && durationDisplay && !video.duration) {
-      durationDisplay.textContent = formatTime(vid.duration);
-    }
     const sidebar = document.getElementById('sidebarSuggests');
     if (sidebar) {
       const suggestions = data
