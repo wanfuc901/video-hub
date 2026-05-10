@@ -972,12 +972,16 @@ if (document.getElementById('videoPlayer')) {
 
   addToHistory(CURRENT_FILE, CURRENT_PATH, document.getElementById('titleText')?.textContent || CURRENT_FILE);
 
+  // preload="none" → tự fetch duration từ list API để hiển thị trước khi play
   fetch('api.php?action=list').then(r => r.json()).then(data => {
     const vid = data.find(v => v.name === CURRENT_FILE);
     if (vid?.title_custom) {
       const tt = document.getElementById('titleText'); if (tt) tt.textContent = vid.title_custom;
       document.title = 'Playing: ' + vid.title_custom;
       addToHistory(CURRENT_FILE, CURRENT_PATH, vid.title_custom);
+    }
+    if (vid?.duration && durationDisplay && !video.duration) {
+      durationDisplay.textContent = formatTime(vid.duration);
     }
     const sidebar = document.getElementById('sidebarSuggests');
     if (sidebar) {

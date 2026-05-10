@@ -206,7 +206,11 @@ if ($action === 'stream') {
     }
 
     set_time_limit(0);
-    ignore_user_abort(false); // dừng ngay khi client ngắt kết nối
+    ignore_user_abort(false);
+
+    // Tắt mọi lớp nén — video đã nén sẵn, nén thêm chỉ tốn CPU và gây delay
+    @ini_set('zlib.output_compression', 'Off');
+    @apache_setenv('no-gzip', '1');
 
     $begin = 0;
     $end   = $size - 1;
@@ -216,19 +220,13 @@ if ($action === 'stream') {
         if (!empty($m[2])) $end = intval($m[2]);
     }
 
-    // Giới hạn mỗi response tối đa 4MB để mobile không bị chờ lâu
-    // Browser sẽ tự range-request thêm khi cần
-    $maxChunk = 4 * 1024 * 1024;
-    if (($end - $begin + 1) > $maxChunk && !isset($_SERVER['HTTP_RANGE'])) {
-        $end = $begin + $maxChunk - 1;
-    }
-
-    $isRange = isset($_SERVER['HTTP_RANGE']) || $end < $size - 1;
+    $isRange = isset($_SERVER['HTTP_RANGE']);
     header($isRange ? 'HTTP/1.1 206 Partial Content' : 'HTTP/1.1 200 OK');
     header('Access-Control-Allow-Origin: *');
     header('Cross-Origin-Resource-Policy: cross-origin');
     header('Accept-Ranges: bytes');
     header("Content-Type: $contentType");
+    header('Content-Encoding: identity'); // tắt mod_deflate cho video
     header('Cache-Control: public, max-age=3600');
     header('Content-Length: ' . ($end - $begin + 1));
     header("Content-Range: bytes $begin-$end/$size");
@@ -236,13 +234,17 @@ if ($action === 'stream') {
     header('X-Content-Type-Options: nosniff');
 
     fseek($fm, $begin);
-    $length = $end - $begin + 1;
+    $remaining = ($end - $begin) + 1;
+    $bufSize   = 512 * 1024; // 512KB mỗi lần đọc — flush ngay xuống client
 
-    // Zero-copy stream thẳng ra output
-    $out = fopen('php://output', 'wb');
-    stream_copy_to_stream($fm, $out, $length);
+    while ($remaining > 0 && !feof($fm) && connection_status() === 0) {
+        $chunk = fread($fm, min($bufSize, $remaining));
+        if ($chunk === false) break;
+        echo $chunk;
+        flush(); // buộc Apache gửi ngay, không buffer
+        $remaining -= strlen($chunk);
+    }
 
-    fclose($out);
     fclose($fm);
     exit;
 }
