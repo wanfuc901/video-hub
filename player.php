@@ -34,11 +34,10 @@ $mimeType = $extMime[$fileExt] ?? 'video/mp4';
     <div class="player-layout">
         <div class="main-player-area">
             <div class="custom-player-wrapper" id="playerWrapper">
-                <video id="videoPlayer"
-                    src="api.php?action=stream&path=<?= urlencode($path) ?>"
-                    type="<?= htmlspecialchars($mimeType) ?>"
-                    preload="none"
-                    playsinline></video>
+                <video id="videoPlayer" preload="none" playsinline>
+                    <source src="api.php?action=stream&path=<?= urlencode($path) ?>"
+                            type="<?= htmlspecialchars($mimeType) ?>">
+                </video>
                 <div class="player-controls" id="playerControls">
                     <div class="seek-bar-container" id="seekBarContainer">
                         <div class="seek-bar-fill" id="seekBarFill"></div>
@@ -101,7 +100,8 @@ $mimeType = $extMime[$fileExt] ?? 'video/mp4';
             const v = document.getElementById('videoPlayer');
             if (v) {
                 v.pause();
-                v.src = "";
+                // Xóa source để giải phóng socket ngay lập tức
+                v.querySelectorAll('source').forEach(s => s.removeAttribute('src'));
                 v.load();
                 v.remove();
             }
