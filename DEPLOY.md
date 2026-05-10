@@ -14,9 +14,8 @@ GitHub Actions runner chạy trên cloud — **không thể SSH vào IP nội b�
 Bạn cần một trong hai cách sau:
 
 ### Cách 1 — Port forwarding (đơn giản nhất)
-Vào router, forward port `8022` → IP điện thoại (`192.168.1.11`).  
+Vào router, forward port `8022` → IP điện thoại (`100.127.9.63`).
 Sau đó dùng IP public của mạng nhà làm `SSH_HOST`.
-
 ### Cách 2 — Tailscale (khuyến nghị, không cần đụng router)
 1. Cài Tailscale trên điện thoại Termux:
    ```bash
