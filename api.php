@@ -1,6 +1,17 @@
 <?php
-require __DIR__ . '/auth.php';
 $config = require 'config.php';
+$action = $_GET['action'] ?? 'list';
+$path   = $_GET['path'] ?? '';
+$key    = $_GET['k'] ?? '';
+$salt   = $config['share_salt'] ?? 'vhhub_default_salt';
+
+// Cho phép stream video nếu có share key hợp lệ (không cần login)
+$isPublicStream = ($action === 'stream' && !empty($path) && !empty($key) && $key === md5($path . $salt));
+
+if (!$isPublicStream) {
+    require __DIR__ . '/auth.php';
+}
+
 $videoDir      = $config['video_dir'];
 $scanDirs      = $config['scan_dirs'] ?? [$videoDir];
 $thumbDir      = $config['thumb_dir'];
@@ -11,12 +22,21 @@ if (!is_dir($videoDir))  @mkdir($videoDir, 0777, true);
 if (!is_dir($thumbDir))  @mkdir($thumbDir, 0777, true);
 if (!file_exists($titlesFile)) @file_put_contents($titlesFile, json_encode([]));
 
-$action    = $_GET['action'] ?? 'list';
 $cacheFile = $thumbDir . DIRECTORY_SEPARATOR . '_list_cache.json';
 
 function getTitles() { global $titlesFile; if(file_exists($titlesFile)){$d=file_get_contents($titlesFile);return json_decode($d,true)??[];}return []; }
 function saveTitles($t) { global $titlesFile; file_put_contents($titlesFile, json_encode($t, JSON_PRETTY_PRINT)); }
 function bustListCache() { global $cacheFile; @unlink($cacheFile); }
+
+if ($action === 'get_share_link') {
+    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . dirname($_SERVER['REQUEST_URI']);
+    $shareKey = md5($path . $salt);
+    echo json_encode([
+        'success' => true,
+        'link' => rtrim($baseUrl, '/') . "/share.php?path=" . urlencode($path) . "&k=" . $shareKey
+    ]);
+    exit;
+}
 
 if ($action === 'list') {
     header('Content-Type: application/json');

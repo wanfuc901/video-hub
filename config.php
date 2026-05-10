@@ -20,5 +20,6 @@ return [
     'scan_dirs'  => $scanDirs,            // nơi list video từ
     'thumb_dir'  => __DIR__ . '/thumbnails',
     'titles_file'=> __DIR__ . '/titles.json',
+    'share_salt' => 'vhhub_' . substr(md5(__DIR__), 0, 8), // Salt ngẫu nhiên theo thư mục cài đặt
     'supported_extensions' => ['mp4', 'mkv', 'avi', 'mov', 'webm', 'm4v']
 ];

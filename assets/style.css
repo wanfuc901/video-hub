@@ -175,6 +175,8 @@ main { margin-top: 64px; }
 .watched-badge { position:absolute;top:8px;left:8px;background:var(--accent);color:white;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:2; }
 
 .fav-btn { position:absolute;top:8px;right:8px;background:rgba(255,255,255,.9);border:none;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-gray);transition:.2s;z-index:2; }
+.share-btn { position:absolute;top:44px;right:8px;background:rgba(255,255,255,.9);border:none;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-gray);transition:.2s;z-index:2; }
+.share-btn:hover { color:var(--accent); transform: scale(1.1); }
 .fav-btn.active,.fav-btn:hover { color:var(--accent); }
 .fav-btn.active svg { fill:currentColor; }
 
@@ -187,6 +189,7 @@ main { margin-top: 64px; }
   cursor:pointer; z-index:2; opacity:0; transition:opacity .2s;
 }
 .video-card:hover .delete-hover-btn { opacity:1; }
+.selecting-mode .fav-btn, .selecting-mode .share-btn, .selecting-mode .delete-hover-btn { display:none; }
 
 /* Selection checkbox */
 .select-checkbox {
