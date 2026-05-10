@@ -1,44 +1,76 @@
-# 🚀 Nginx Config for Video Hub (Termux)
-# Place this at: /data/data/com.termux/files/usr/etc/nginx/nginx.conf
+# nginx.conf.example — Video Hub on Termux
+# Chạy setup-nginx-termux.sh để tự động cấu hình,
+# hoặc thay [PROJECT_DIR] và [PHP_FPM_SOCK] thủ công rồi copy vào:
+#   /data/data/com.termux/files/usr/etc/nginx/nginx.conf
 
 worker_processes auto;
-events { worker_connections 1024; }
+events { worker_connections 512; }
 
 http {
-    include mime.types;
+    include      mime.types;
     default_type application/octet-stream;
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
+
+    # Tối ưu cho file lớn — kernel sendfile, không qua userspace
+    sendfile        on;
+    tcp_nopush      on;
+    tcp_nodelay     on;
     keepalive_timeout 65;
 
-    # Performance for big files
-    client_max_body_size 10000M;
-    proxy_max_temp_file_size 0;
+    # Upload file lớn
+    client_max_body_size  10000M;
+    client_body_timeout   600s;
+    client_header_timeout  60s;
+    send_timeout           600s;
+
+    # Gzip chỉ cho text/JS/CSS — video đã nén sẵn, KHÔNG gzip
+    gzip       on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
 
     server {
-        listen 8080;
-        server_name localhost;
-        root /data/data/com.termux/files/home/video-hub;
+        listen      8080;
+        server_name _;
+        root        [PROJECT_DIR];
+        index       index.php;
 
-        index index.php;
+        # ── Static assets — cache 7 ngày ──────────────────────────
+        location ~* \.(css|js|svg|ico|webp|jpg|png|woff2?)$ {
+            expires    7d;
+            add_header Cache-Control "public";
+            access_log off;
+        }
+
+        # ── Internal: thư mục video chính ─────────────────────────
+        # Nginx serve thẳng từ disk, PHP chỉ kiểm tra auth rồi ra lệnh redirect.
+        # KHÔNG để lộ URL này ra ngoài (internal).
+        location /internal_videos/ {
+            internal;
+            alias      [PROJECT_DIR]/videos/;
+            add_header Accept-Ranges  bytes;
+            add_header Cache-Control  "public, max-age=3600";
+        }
+
+        # ── Internal: video từ /storage Android ───────────────────
+        location /internal_storage/ {
+            internal;
+            alias      /storage/emulated/0/Videos/;
+            add_header Accept-Ranges  bytes;
+            add_header Cache-Control  "public, max-age=3600";
+        }
+
+        # ── PHP-FPM ────────────────────────────────────────────────
+        location ~ \.php$ {
+            include             fastcgi_params;
+            fastcgi_param       SCRIPT_FILENAME $document_root$fastcgi_script_name;
+            fastcgi_param       USE_NGINX       1;   # bật X-Accel-Redirect trong api.php
+            fastcgi_pass        unix:[PHP_FPM_SOCK];
+            fastcgi_read_timeout  600;
+            fastcgi_send_timeout  600;
+            fastcgi_buffers       8 256k;
+            fastcgi_buffer_size   256k;
+        }
 
         location / {
             try_files $uri $uri/ /index.php?$query_string;
-        }
-
-        # Nginx Offloading (Internal location for big files)
-        location /internal_videos/ {
-            internal;
-            alias /data/data/com.termux/files/home/video-hub/videos/; # Path to your videos dir
-        }
-
-        location ~ \.php$ {
-            # Use Unix socket for speed
-            include fastcgi_params;
-            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-            fastcgi_param USE_NGINX 1; # Enable Nginx offloading in api.php
-            fastcgi_pass 127.0.0.1:9000; # Assuming php-fpm is on 9000
         }
     }
 }

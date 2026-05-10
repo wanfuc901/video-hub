@@ -189,14 +189,34 @@ if ($action === 'stream') {
     $mm = ['mp4' => 'video/mp4', 'mkv' => 'video/x-matroska', 'avi' => 'video/x-msvideo', 'mov' => 'video/quicktime', 'webm' => 'video/webm', 'm4v' => 'video/mp4'];
     $contentType = $mm[$ext] ?? 'video/mp4';
 
-    // 2. Tùy chọn Nginx Offloading (X-Accel-Redirect)
-    // Nếu bạn chạy qua Nginx, hãy đặt biến môi trường USE_NGINX=1
+    // 2. Nginx Offloading — api.php chỉ xác thực, Nginx serve file trực tiếp
+    // Được bật khi fastcgi_param USE_NGINX 1 trong nginx.conf (setup-nginx-termux.sh)
     if (getenv('USE_NGINX') === '1') {
-        // Giả định thư mục videos được map vào /internal_videos/ trong nginx config
-        $relative_path = str_replace(__DIR__, '', realpath($path));
-        header("X-Accel-Redirect: /internal_videos" . $relative_path);
-        header("Content-Type: $contentType");
-        exit;
+        $realPath     = realpath($path);
+        $realVideoDir = realpath($videoDir);
+        $accelPath    = null;
+
+        if ($realVideoDir && $realPath &&
+            str_starts_with($realPath, $realVideoDir . DIRECTORY_SEPARATOR)) {
+            // File trong thư mục videos/ chính
+            $sub       = substr($realPath, strlen($realVideoDir));
+            $accelPath = '/internal_videos' . str_replace(DIRECTORY_SEPARATOR, '/', $sub);
+
+        } elseif ($realPath &&
+                  str_starts_with($realPath, '/storage/emulated/0/Videos/')) {
+            // File trong bộ nhớ Android
+            $sub       = substr($realPath, strlen('/storage/emulated/0/Videos'));
+            $accelPath = '/internal_storage' . $sub;
+        }
+
+        if ($accelPath) {
+            header("X-Accel-Redirect: $accelPath");
+            header("Content-Type: $contentType");
+            header('Accept-Ranges: bytes');
+            header('Cache-Control: public, max-age=3600');
+            exit;
+        }
+        // Nếu không map được → fall through sang PHP streaming bên dưới
     }
 
     $fm = @fopen($path, 'rb');

@@ -44,10 +44,26 @@ server.log       ← log Termux
 
 ## 🚀 Cách deploy lên server
 
-### Termux (Android)
+### Termux (Android) — Nginx + PHP-FPM (Khuyến nghị)
+
+> Nginx serve video trực tiếp từ disk, nhanh hơn `php -S` rất nhiều cho file lớn.
+
 ```bash
 git clone https://github.com/wanfuc901/video-hub.git
 cd video-hub
+bash setup-nginx-termux.sh      # cài nginx + php-fpm, tự động cấu hình, khởi động
+```
+
+Dừng server:
+```bash
+bash stop-nginx-termux.sh
+```
+
+### Termux (Android) — PHP built-in (đơn giản, chậm hơn)
+
+> Chỉ dùng khi không thể cài nginx. Single-threaded, không phù hợp cho file lớn.
+
+```bash
 nohup php -d upload_max_filesize=10000M -d post_max_size=10000M -S 0.0.0.0:8080 > server.log 2>&1 &
 ```
 
