@@ -67,20 +67,22 @@ $mimeType = $extMime[$fileExt] ?? 'video/mp4';
             </div>
             
             <div class="player-info-bar">
-                <div>
+                <div class="info-left">
                     <div style="font-family:'DM Mono'; color:var(--text-gray); font-size:12px; margin-bottom:8px;">Video Hub > <span id="breadcrumbTitle"><?= htmlspecialchars($filename) ?></span></div>
                     <h1 class="syne-font" id="mainTitleDisplay">
                         <span id="titleText"><?= htmlspecialchars($filename) ?></span>
-                        <button class="edit-title-btn" id="editTitleBtn" title="Edit Title" style="display:inline-flex; align-items:center; gap:6px; font-size:14px; font-family:'DM Sans'; padding:4px 8px; border:1px solid #333; border-radius:4px; margin-left:12px;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            Sửa Tên
-                        </button>
                     </h1>
                 </div>
-                <button class="btn btn-outline fav-toggle-btn" id="playerFavBtn" style="border-color:#333; color:white;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                    Yêu thích
-                </button>
+                <div class="info-right">
+                    <button class="edit-title-btn" id="editTitleBtn" title="Edit Title" style="display:inline-flex; align-items:center; gap:6px; font-size:14px; font-family:'DM Sans'; padding:6px 12px; border:1px solid #333; border-radius:4px; color:var(--text-gray);">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        Sửa Tên
+                    </button>
+                    <button class="btn btn-outline fav-toggle-btn" id="playerFavBtn" style="border-color:#333; color:white; padding:6px 12px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px;"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                        Yêu thích
+                    </button>
+                </div>
             </div>
         </div>
         <div class="sidebar">
