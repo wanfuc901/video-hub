@@ -1,11 +1,19 @@
 <?php
-// config.php
+declare(strict_types=1);
 
 $pwdEnv = getenv('VHHUB_PASSWORD');
 if (!defined('VHHUB_PASSWORD')) {
     define('VHHUB_PASSWORD', $pwdEnv !== false ? $pwdEnv : 'changeme');
 }
 
+// Secret key for HMAC cookie signing — change this to a random string
+$secretEnv = getenv('VHHUB_SECRET');
+if (!defined('AUTH_SECRET')) {
+    define('AUTH_SECRET', $secretEnv !== false ? $secretEnv : 'vhhub_' . substr(sha1(__DIR__ . filemtime(__FILE__)), 0, 32));
+}
+
+define('AUTH_COOKIE', 'vhhub_tok');
+define('AUTH_TTL', 60 * 60 * 24 * 30); // 30 days
 define('APP_VER', @filemtime(__DIR__ . '/assets/app.js') ?: '1');
 
 $uploadDir = __DIR__ . '/videos';

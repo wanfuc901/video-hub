@@ -1,22 +1,76 @@
 <?php
 declare(strict_types=1);
 
-const AUTH_SESSION_KEY = 'vhhub_authenticated';
-
 require_once __DIR__ . '/config.php';
 
-if (session_status() === PHP_SESSION_NONE) session_start();
+// --- HMAC Cookie helpers ---
 
-if (isset($_SESSION[AUTH_SESSION_KEY]) && $_SESSION[AUTH_SESSION_KEY] === true) return;
+function auth_make_token(): string {
+    $payload = base64_encode(json_encode([
+        'v'   => 1,
+        'exp' => time() + AUTH_TTL,
+    ]));
+    $sig = hash_hmac('sha256', $payload, AUTH_SECRET);
+    return $payload . '.' . $sig;
+}
 
-// Handle login POST before any output
+function auth_verify_token(string $token): bool {
+    $parts = explode('.', $token, 2);
+    if (count($parts) !== 2) return false;
+    [$payload, $sig] = $parts;
+    if (!hash_equals(hash_hmac('sha256', $payload, AUTH_SECRET), $sig)) return false;
+    $data = json_decode(base64_decode($payload), true);
+    if (!is_array($data) || empty($data['exp'])) return false;
+    return $data['exp'] > time();
+}
+
+function auth_set_cookie(string $token): void {
+    setcookie(AUTH_COOKIE, $token, [
+        'expires'  => time() + AUTH_TTL,
+        'path'     => '/',
+        'httponly' => true,
+        'samesite' => 'Strict',
+        'secure'   => isset($_SERVER['HTTPS']),
+    ]);
+}
+
+function auth_clear_cookie(): void {
+    setcookie(AUTH_COOKIE, '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'httponly' => true,
+        'samesite' => 'Strict',
+    ]);
+}
+
+// --- Check existing cookie ---
+
+$existingToken = $_COOKIE[AUTH_COOKIE] ?? '';
+if ($existingToken !== '' && auth_verify_token($existingToken)) {
+    // Renew cookie if less than half TTL remains
+    $data = json_decode(base64_decode(explode('.', $existingToken, 2)[0]), true);
+    if (is_array($data) && ($data['exp'] - time()) < (AUTH_TTL / 2)) {
+        auth_set_cookie(auth_make_token());
+    }
+    return; // authenticated
+}
+
+// --- Handle logout ---
+
+if (($_GET['action'] ?? '') === 'logout') {
+    auth_clear_cookie();
+    header('Location: index.php');
+    exit;
+}
+
+// --- Handle login POST ---
+
 $authError = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $submitted = $_POST['password'] ?? '';
     if (hash_equals((string)VHHUB_PASSWORD, $submitted)) {
-        $_SESSION[AUTH_SESSION_KEY] = true;
+        auth_set_cookie(auth_make_token());
         $rawRedirect = $_POST['redirect'] ?? 'index.php';
-        // Allow only same-origin paths — no protocol, no double-slash
         $safeRedirect = preg_match('/^[\w\-\.\/\?\=\&\%]+$/', $rawRedirect) ? $rawRedirect : 'index.php';
         header('Location: ' . $safeRedirect);
         exit;
@@ -24,12 +78,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $authError = 'Sai mật khẩu.';
 }
 
-// API context → 401 JSON, no HTML page
+// --- API context → 401 JSON ---
+
 if (basename($_SERVER['SCRIPT_FILENAME']) === 'api.php') {
     http_response_code(401);
+    header('Content-Type: application/json');
     echo json_encode(['error' => 'Unauthorized']);
     exit;
 }
+
+// --- Render login page ---
 
 $redirectUri = htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'index.php', ENT_QUOTES);
 ?>
@@ -42,53 +100,13 @@ $redirectUri = htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'index.php', ENT_QUOT
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/style.css?v=<?= APP_VER ?>">
   <style>
-    .login-wrap {
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
-    .login-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      padding: 40px 36px;
-      width: 100%;
-      max-width: 380px;
-    }
-    .login-logo {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 32px;
-      font-size: 22px;
-      font-weight: 700;
-    }
-    .login-error {
-      background: rgba(239,68,68,.15);
-      border: 1px solid rgba(239,68,68,.4);
-      color: #f87171;
-      padding: 10px 14px;
-      font-size: 13px;
-      margin-bottom: 16px;
-    }
-    .login-field-label {
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-gray);
-      text-transform: uppercase;
-      letter-spacing: .06em;
-      margin-bottom: 8px;
-    }
-    .login-card input[type=password] {
-      width: 100%;
-      box-sizing: border-box;
-    }
-    .login-card .btn {
-      width: 100%;
-      margin-top: 20px;
-    }
+    .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .login-card{background:var(--surface);border:1px solid var(--border);padding:40px 36px;width:100%;max-width:380px}
+    .login-logo{display:flex;align-items:center;gap:10px;margin-bottom:32px;font-size:22px;font-weight:700}
+    .login-error{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171;padding:10px 14px;font-size:13px;margin-bottom:16px}
+    .login-field-label{display:block;font-size:12px;font-weight:600;color:var(--text-gray);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+    .login-card input[type=password]{width:100%;box-sizing:border-box}
+    .login-card .btn{width:100%;margin-top:20px}
   </style>
 </head>
 <body>
@@ -112,5 +130,4 @@ $redirectUri = htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'index.php', ENT_QUOT
   </div>
 </body>
 </html>
-<?php
-exit;
+<?php exit;
