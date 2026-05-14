@@ -13,7 +13,7 @@ if (isset($_SESSION[AUTH_SESSION_KEY]) && $_SESSION[AUTH_SESSION_KEY] === true) 
 $authError = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $submitted = $_POST['password'] ?? '';
-    if ($submitted === VHHUB_PASSWORD) {
+    if (hash_equals((string)VHHUB_PASSWORD, $submitted)) {
         $_SESSION[AUTH_SESSION_KEY] = true;
         $rawRedirect = $_POST['redirect'] ?? 'index.php';
         // Allow only same-origin paths — no protocol, no double-slash
@@ -40,7 +40,7 @@ $redirectUri = htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'index.php', ENT_QUOT
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VHHub — Đăng nhập</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
-  <link rel="stylesheet" href="assets/style.css?v=<?= time() ?>">
+  <link rel="stylesheet" href="assets/style.css?v=<?= APP_VER ?>">
   <style>
     .login-wrap {
       min-height: 100vh;

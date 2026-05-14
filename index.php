@@ -6,10 +6,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VHHub</title>
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
-<link rel="stylesheet" href="assets/style.css?v=<?= time() ?>">
+<link rel="stylesheet" href="assets/style.css?v=<?= APP_VER ?>">
 </head>
 <body>
-<script src="assets/loader.js?v=<?= time() ?>"></script>
+<script src="assets/loader.js?v=<?= APP_VER ?>"></script>
 <div id="toastContainer"></div>
 
 <!-- ════════════════ HEADER ════════════════ -->
@@ -206,6 +206,6 @@
   </div>
 </main>
 
-<script src="assets/app.js?v=<?= time() ?>"></script>
+<script src="assets/app.js?v=<?= APP_VER ?>"></script>
 </body>
 </html>

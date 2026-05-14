@@ -1,4 +1,6 @@
 <?php
+declare(strict_types=1);
+
 $config = require 'config.php';
 $action = $_GET['action'] ?? 'list';
 $path   = $_GET['path'] ?? '';
@@ -6,7 +8,7 @@ $key    = $_GET['k'] ?? '';
 $salt   = $config['share_salt'] ?? 'vhhub_default_salt';
 
 // Cho phép stream video nếu có share key hợp lệ (không cần login)
-$isPublicStream = ($action === 'stream' && !empty($path) && !empty($key) && $key === md5($path . $salt));
+$isPublicStream = ($action === 'health') || ($action === 'stream' && !empty($path) && !empty($key) && $key === hash_hmac('sha256', $path, $salt));
 
 if (!$isPublicStream) {
     require __DIR__ . '/auth.php';
@@ -25,12 +27,12 @@ if (!file_exists($titlesFile)) @file_put_contents($titlesFile, json_encode([]));
 $cacheFile = $thumbDir . DIRECTORY_SEPARATOR . '_list_cache.json';
 
 function getTitles() { global $titlesFile; if(file_exists($titlesFile)){$d=file_get_contents($titlesFile);return json_decode($d,true)??[];}return []; }
-function saveTitles($t) { global $titlesFile; file_put_contents($titlesFile, json_encode($t, JSON_PRETTY_PRINT)); }
+function saveTitles($t) { global $titlesFile; $tmp=$titlesFile.'.tmp'; file_put_contents($tmp,json_encode($t,JSON_PRETTY_PRINT)); rename($tmp,$titlesFile); }
 function bustListCache() { global $cacheFile; @unlink($cacheFile); }
 
 if ($action === 'get_share_link') {
     $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . dirname($_SERVER['REQUEST_URI']);
-    $shareKey = md5($path . $salt);
+    $shareKey = hash_hmac('sha256', $path, $salt);
     echo json_encode([
         'success' => true,
         'link' => rtrim($baseUrl, '/') . "/share.php?path=" . urlencode($path) . "&k=" . $shareKey
@@ -44,7 +46,7 @@ if ($action === 'list') {
     if (file_exists($cacheFile)) {
         $etag = md5(filemtime($cacheFile) . filesize($cacheFile));
         header("ETag: \"$etag\"");
-        header('Cache-Control: public, max-age=5');
+        header('Cache-Control: public, max-age=60');
 
         if (isset($_SERVER['HTTP_IF_NONE_MATCH']) && trim($_SERVER['HTTP_IF_NONE_MATCH'], '"') === $etag) {
             http_response_code(304);
@@ -147,6 +149,24 @@ if ($action === 'upload_chunk') {
     flock($lock, LOCK_UN); fclose($lock); @unlink($lockFile);
     @rmdir($tmpDir);
     bustListCache();
+
+    // Auto-optimize: faststart + thumbnail (nền, không block response)
+    $absPath    = $videoDir . DIRECTORY_SEPARATOR . $finalName;
+    $thumbKey   = md5($finalName);
+    $thumbPath  = $thumbDir . DIRECTORY_SEPARATOR . $thumbKey . '.webp';
+    $ffmpeg     = trim(shell_exec('which ffmpeg 2>/dev/null') ?? '');
+    if ($ffmpeg && !file_exists($thumbPath)) {
+        $dur = (float)(shell_exec("$ffmpeg -i " . escapeshellarg($absPath) . " 2>&1 | grep -oP 'Duration: \K[\d:.]+' | head -1 | awk -F: '{print (\$1*3600)+(\$2*60)+\$3}'") ?? '0');
+        $seek = max(1, (int)($dur * 0.1));
+        $cmd = "$ffmpeg -loglevel error -ss $seek -i " . escapeshellarg($absPath) . " -vframes 1 -vf scale=640:-2 " . escapeshellarg($thumbPath) . " > /dev/null 2>&1 &";
+        shell_exec($cmd);
+    }
+    if ($ffmpeg && in_array(strtolower(pathinfo($finalName, PATHINFO_EXTENSION)), ['mp4', 'm4v'])) {
+        $tmp = $absPath . '.tmp';
+        $cmd = "$ffmpeg -loglevel error -i " . escapeshellarg($absPath) . " -c copy -movflags faststart " . escapeshellarg($tmp) . " && mv " . escapeshellarg($tmp) . " " . escapeshellarg($absPath) . " > /dev/null 2>&1 &";
+        shell_exec($cmd);
+    }
+
     echo json_encode(['success' => true, 'done' => true, 'file' => $finalName]); exit;
 }
 
@@ -194,10 +214,29 @@ if ($action === 'delete_many') {
     saveTitles($t);bustListCache();echo json_encode(['success'=>true,'deleted'=>$deleted,'errors'=>$errors]); exit;
 }
 
+if ($action === 'health') {
+    header('Content-Type: application/json');
+    echo json_encode(['ok' => true, 'ts' => time()]);
+    exit;
+}
+
 if ($action === 'stream') {
     $path = $_GET['path'] ?? '';
     if (empty($path) || !file_exists($path)) {
         http_response_code(404);
+        exit;
+    }
+    $realPath = realpath($path);
+    $allowed  = false;
+    foreach ($scanDirs as $dir) {
+        $realDir = realpath($dir);
+        if ($realDir && $realPath && str_starts_with($realPath, $realDir . DIRECTORY_SEPARATOR)) {
+            $allowed = true;
+            break;
+        }
+    }
+    if (!$allowed) {
+        http_response_code(403);
         exit;
     }
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vhhub-v3';
+const CACHE_NAME = 'vhhub-v5';
 const ASSETS = [
   './',
   'index.php',

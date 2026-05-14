@@ -5,7 +5,7 @@ $key    = $_GET['k'] ?? '';
 $salt   = $config['share_salt'] ?? 'vhhub_default_salt';
 
 // Verify link integrity
-if (empty($path) || empty($key) || $key !== md5($path . $salt)) {
+if (empty($path) || empty($key) || $key !== hash_hmac('sha256', $path, $salt)) {
     die("Liên kết không hợp lệ hoặc đã hết hạn.");
 }
 

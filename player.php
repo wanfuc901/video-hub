@@ -19,10 +19,10 @@ $mimeType = $extMime[$fileExt] ?? 'video/mp4';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Playing: <?= htmlspecialchars($filename) ?> - VHHub</title>
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
-    <link rel="stylesheet" href="assets/style.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="assets/style.css?v=<?= APP_VER ?>">
 </head>
 <body class="player-page">
-    <script src="assets/loader.js?v=<?= time() ?>"></script>
+    <script src="assets/loader.js?v=<?= APP_VER ?>"></script>
     <div id="toastContainer"></div>
     <header>
         <a href="index.php" class="logo" style="padding-left:24px;">
@@ -34,7 +34,7 @@ $mimeType = $extMime[$fileExt] ?? 'video/mp4';
     <div class="player-layout">
         <div class="main-player-area">
             <div class="custom-player-wrapper" id="playerWrapper">
-                <video id="videoPlayer" preload="metadata" playsinline>
+                <video id="videoPlayer" preload="metadata" playsinline webkit-playsinline x-webkit-airplay="allow">
                     <source src="api.php?action=stream&path=<?= urlencode($path) ?>"
                             type="<?= htmlspecialchars($mimeType) ?>">
                 </video>
@@ -113,6 +113,6 @@ $mimeType = $extMime[$fileExt] ?? 'video/mp4';
             }
         });
     </script>
-    <script src="assets/app.js?v=<?= time() ?>"></script>
+    <script src="assets/app.js?v=<?= APP_VER ?>"></script>
 </body>
 </html>

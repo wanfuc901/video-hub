@@ -1,25 +1,26 @@
 <?php
-// config.php — auto-detect environment
+// config.php
 
+$pwdEnv = getenv('VHHUB_PASSWORD');
 if (!defined('VHHUB_PASSWORD')) {
-    define('VHHUB_PASSWORD', 'changeme');
+    define('VHHUB_PASSWORD', $pwdEnv !== false ? $pwdEnv : 'changeme');
 }
 
-// Upload dir: luôn dùng videos/ trong project (writable)
+define('APP_VER', @filemtime(__DIR__ . '/assets/app.js') ?: '1');
+
 $uploadDir = __DIR__ . '/videos';
 if (!is_dir($uploadDir)) @mkdir($uploadDir, 0777, true);
 
-// Scan dirs: quét thêm /storage nếu có
 $scanDirs = [$uploadDir];
 if (is_dir('/storage/emulated/0/Videos')) {
     $scanDirs[] = '/storage/emulated/0/Videos';
 }
 
 return [
-    'video_dir'  => $uploadDir,          // nơi upload lưu vào
-    'scan_dirs'  => $scanDirs,            // nơi list video từ
+    'video_dir'  => $uploadDir,
+    'scan_dirs'  => $scanDirs,
     'thumb_dir'  => __DIR__ . '/thumbnails',
     'titles_file'=> __DIR__ . '/titles.json',
-    'share_salt' => 'vhhub_' . substr(md5(__DIR__), 0, 8), // Salt ngẫu nhiên theo thư mục cài đặt
+    'share_salt' => 'vhhub_' . substr(md5(__DIR__), 0, 16),
     'supported_extensions' => ['mp4', 'mkv', 'avi', 'mov', 'webm', 'm4v']
 ];

@@ -382,3 +382,96 @@ main { margin-top: 64px; }
 @media (hover: none) {
   .custom-player-wrapper:active .player-controls { opacity: 1; }
 }
+
+/* ══════════════════════════════════════════════════
+   PERFORMANCE PATCH — iOS + Windows smoothness
+   ══════════════════════════════════════════════════ */
+
+/* GPU compositing: tách layer riêng khi hover */
+.video-card {
+  contain: layout style;
+  will-change: auto;
+}
+.video-card:hover {
+  will-change: transform;
+}
+
+/* content-visibility: browser bỏ qua render card ngoài viewport
+   → giảm 60-80% render time cho thư viện lớn */
+.video-grid:not(.view-list):not(.view-none) .video-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
+}
+
+/* iOS: smooth momentum scroll */
+.sidebar {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.modal-content {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Giảm backdrop-filter từ blur(4px) -> blur(2px) — đắt trên iOS */
+.modal {
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.overlay-dialog {
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* Prevent double-tap zoom trên iOS (touch elements) */
+button, a, .tab, .video-card, select {
+  touch-action: manipulation;
+}
+
+/* Prevent scroll chaining (iOS pull-to-refresh trên modal) */
+body {
+  overscroll-behavior-y: none;
+}
+
+/* Font display swap để text visible ngay khi load */
+@font-face {
+  font-display: swap;
+}
+
+/* Seek bar: touch target lớn hơn trên mobile */
+@media (hover: none) {
+  .seek-bar-container {
+    height: 12px;
+    margin: -4px 0;
+  }
+  .player-controls {
+    opacity: 1;
+    background: linear-gradient(transparent, rgba(0,0,0,.75));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+}
+
+/* iOS notch/home-indicator safe area */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .player-page header {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+/* Skeleton shimmer: dùng transform thay background-position (GPU) */
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.skeleton {
+  background: #ebebeb;
+  position: relative;
+  overflow: hidden;
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
+  animation: shimmer 1.5s infinite;
+}

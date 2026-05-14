@@ -705,14 +705,15 @@ if (document.getElementById('videoGrid')) {
     }
 
     const favs = getFavs();
+    const fragment = document.createDocumentFragment();
     videos.forEach((v, idx) => {
       const isFav = favs.includes(v.name);
       const isSelected = selectedFiles.has(v.name);
       const card = document.createElement('div');
       card.className = 'video-card' + (isSelected ? ' selected' : '');
       card.dataset.name = v.name;
-      card.style.animation = `toastIn .35s ease forwards ${idx * 0.04}s`;
-      card.style.opacity = '0';
+      const staggerMs = videos.length > 24 ? 0 : Math.min(idx * 0.04, 0.4);
+      if (staggerMs > 0) { card.style.animation = `toastIn .3s ease forwards ${staggerMs}s`; card.style.opacity = '0'; } else { card.style.opacity = '1'; }
 
       const displayName = v.title_custom || v.name;
       const thumbSrc = v.thumbnail_exists ? `api.php?action=thumbnail&file=${encodeURIComponent(v.name)}` : '';
@@ -755,7 +756,7 @@ if (document.getElementById('videoGrid')) {
         </div>
       `;
 
-      grid.appendChild(card);
+      fragment.appendChild(card);
 
       const openVideo = () => {
         if (isSelectingMode) { toggleSelectCard(card, v.name); return; }
@@ -812,6 +813,7 @@ if (document.getElementById('videoGrid')) {
       };
     });
 
+    grid.appendChild(fragment);
     observeThumbsInGrid(targetId);
   }
 
