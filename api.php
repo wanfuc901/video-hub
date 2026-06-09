@@ -110,7 +110,7 @@ if ($action === 'upload_chunk') {
     if(!isset($_FILES['chunk'])||$_FILES['chunk']['error']!==UPLOAD_ERR_OK){http_response_code(400);echo json_encode(['error'=>'Chunk error']);exit;}
     $tmpDir=sys_get_temp_dir().DIRECTORY_SEPARATOR.'vhhub_'.$uploadId;
     if(!is_dir($tmpDir))@mkdir($tmpDir,0777,true);
-    $chunkPath=$tmpDir.DIRECTORY_SEPARATOR.'chunk_'.str_pad($chunkIdx,6,'0',STR_PAD_LEFT);
+    $chunkPath=$tmpDir.DIRECTORY_SEPARATOR.'chunk_'.str_pad((string)$chunkIdx,6,'0',STR_PAD_LEFT);
     if(!move_uploaded_file($_FILES['chunk']['tmp_name'],$chunkPath)){http_response_code(500);echo json_encode(['error'=>'Save failed']);exit;}
     $lockFile = $tmpDir . DIRECTORY_SEPARATOR . 'merge.lock';
     $lock = fopen($lockFile, 'w');
